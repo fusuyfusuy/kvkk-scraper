@@ -33,7 +33,8 @@ cursor.execute('''
     CREATE TABLE IF NOT EXISTS blog_posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL UNIQUE,
-        post TEXT NOT NULL
+        post TEXT NOT NULL,
+				sent INTEGER NOT NULL DEFAULT 0
     )
 ''')
 
@@ -47,6 +48,7 @@ firstPostClassName = "blog-post-container"
 postClassName = "blog-post-inner"
 postTitleClass = "blog-post-title"
 stringToRemove = "Kamuoyu Duyurusu (Veri İhlali Bildirimi) – "
+stringToRemove2 = "Kamuoyu Duyurusu (Veri İhlali Bildirimi) - "
 
 def getList(url):
 	headers = {'User-Agent': random.choice(user_agents)}
@@ -76,6 +78,7 @@ def getBlogPost(url):
 	post = soup.find(class_=postClassName)
 	title = post.find(class_=postTitleClass)
 	title = title.text.replace(stringToRemove, '')
+	title = title.replace(stringToRemove2, '')
 	return (title, post.text)
 
 def getData(refresh = False):
@@ -106,7 +109,7 @@ def getData(refresh = False):
 					break
 			except Exception as e:
 				print(f"====== Error on {href}, error is {e}")
-			time.sleep(1)
+			# time.sleep(1)
 		i = i+1
 		if (refresh and stop): break;
 
@@ -114,6 +117,7 @@ def main():
 	print('''
 	1. Get all posts
 	2. Refresh db to get new posts
+	3. Send mail
 	''')
 	selection = input("Select: ")
 	if (selection == "1"):
