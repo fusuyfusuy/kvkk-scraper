@@ -78,28 +78,52 @@ def getBlogPost(url):
 	title = title.text.replace(stringToRemove, '')
 	return (title, post.text)
 
-
-i = 1
-while True:
-	pagedUrl = f"{baseUrl}{listings}{str(i)}"
-	print(f"- Scraping page {i}")
-	try:
-		hrefs = getList(pagedUrl)
-	except Exception as e:
-		print(f"====== Something went wrong, {e}")
-		continue
-	if (not hrefs):
-		print(f"-- Response is 302 for page {i}, stopping.")
-		break
-	print(f"-- Found {len(hrefs)} posts.")
-	for href in hrefs:
-		print(f"-- Scraping {href}")
+def getData(refresh = False):
+	i = 1
+	while True:
+		pagedUrl = f"{baseUrl}{listings}{str(i)}"
+		print(f"- Scraping page {i}")
 		try:
-			post = getBlogPost(f"{baseUrl}{href}")
-			cursor.execute('INSERT INTO blog_posts (title, post) VALUES (?, ?)', (post[0], post[1]))
-			conn.commit()
+			hrefs = getList(pagedUrl)
 		except Exception as e:
-			print(f"====== Error on {href}, error is {e}")
-		time.sleep(1)
-	i = i+1
+			print(f"====== Something went wrong, {e}")
+			continue
+		if (not hrefs):
+			print(f"-- Response is 302 for page {i}, stopping.")
+			break
+		print(f"-- Found {len(hrefs)} posts.")
+		for href in hrefs:
+			print(f"-- Scraping {href}")
+			try:
+				post = getBlogPost(f"{baseUrl}{href}")
+				cursor.execute('INSERT INTO blog_posts (title, post) VALUES (?, ?)', (post[0], post[1]))
+				conn.commit()
+			except sqlite3.IntegrityError as e:
+				print(f"====== Error on {href}, error is {e}")
+				if (refresh):
+					print(f"====== Found existing item, stopping.")
+					stop = True
+					break
+			except Exception as e:
+				print(f"====== Error on {href}, error is {e}")
+			time.sleep(1)
+		i = i+1
+		if (refresh and stop): break;
 
+def main():
+	print('''
+	1. Get all posts
+	2. Refresh db to get new posts
+	''')
+	selection = input("Select: ")
+	if (selection == "1"):
+		getData(False)
+	elif (selection == "2"):
+		getData(True)
+	else:
+		print('Unknown selection.')
+		main()
+
+
+if __name__ == "__main__":
+	main()
