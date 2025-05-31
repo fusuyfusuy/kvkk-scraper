@@ -6,6 +6,24 @@ import random
 import logging
 import re
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+
+#
+# EMAIL CONFIGURATION (PLACEHOLDERS - Move to secure config/env variables)
+#
+# These settings are placeholders. For a production environment,
+# use environment variables, a configuration file, or a secure vault.
+
+# TODO: Move KEYWORD_WATCHLIST to a configuration file or a separate manageable list.
+KEYWORD_WATCHLIST = ["banka", "hastane", "e-ticaret", "sağlık"] # Example keywords
+
+SMTP_SERVER = "smtp.example.com"  # e.g., 'smtp.gmail.com'
+SMTP_PORT = 587  # Or 465 for SSL
+SMTP_USERNAME = "your_email@example.com"
+SMTP_PASSWORD = "your_email_password"
+SENDER_EMAIL = "your_email@example.com"
+RECIPIENT_EMAILS = ["recipient1@example.com", "recipient2@example.com"] # List of recipient email addresses
 
 #
 # LOGGING CONFIG
@@ -146,6 +164,22 @@ class Database:
             self.conn.close()
             logger.info("Database connection closed.")
 
+    def get_all_posts(self):
+        """
+        Retrieves all posts from the database.
+
+        Returns:
+            list: A list of tuples, where each tuple represents a post
+                  (id, title, post, post_date, scraped_date, sent).
+                  Returns an empty list if no posts are found or if an error occurs.
+        """
+        try:
+            self.cursor.execute('SELECT id, title, post, post_date, scraped_date, sent FROM blog_posts ORDER BY id')
+            return self.cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error fetching all posts: {e}")
+            return []
+
 #
 # CONSTANT VARIABLES
 #
@@ -260,8 +294,10 @@ class KvkkScraper:
         Returns:
             str or None: The extracted date in 'YYYY-MM-DD' format if a recognized
                          pattern is found and successfully parsed. Returns None otherwise.
+                         NOTE: This function does not perform calendrical validation (e.g., 32nd day or 13th month).
         """
         # List of regex patterns for dates. Order might matter if some patterns are subsets of others.
+        # TODO: Consider adding calendrical validation if stricter date checking is required.
         date_patterns = [
             # Matches DD/MM/YYYY or DD.MM.YYYY (captures day, month, year)
             r'(\d{1,2})[./](\d{1,2})[./](\d{4})',
@@ -470,50 +506,140 @@ class KvkkScraper:
             
     def send_email_notifications(self):
         """
-        Placeholder for sending email notifications for new posts.
+        Sends email notifications for new, unsent posts.
 
-        Retrieves unsent posts from the database. The actual email sending
-        logic (e.g., using `smtplib` or a third-party email library like `yagmail`)
-        needs to be implemented here. This function currently only logs messages.
+        Retrieves posts marked with `sent = 0` from the database.
+        Formats an email for each post including title, date, and a snippet.
+        Uses `smtplib` to connect to the configured SMTP server and send the email.
+        If an email is sent successfully, the post is marked as sent in the database.
+        Includes error handling for SMTP operations.
         """
         unsent_posts = self.db.get_unsent_posts() # Fetch posts marked with sent = 0
         
         if not unsent_posts:
             logger.info("No new posts to send notifications for.")
             return # Exit if there's nothing to send
-            
-        logger.info(f"Found {len(unsent_posts)} posts to send notifications for (functionality not implemented).")
-        
-        # TODO: Implement actual email sending functionality.
-        # This would involve:
-        # 1. Configuring SMTP server details (host, port, username, password - ideally from a config file or environment variables).
-        # 2. Defining recipient email address(es).
-        # 3. Formatting the email content (subject, body with post details like title, date, and a snippet or link).
-        # 4. Iterating through `unsent_posts`:
-        #    a. For each post, construct and send an email.
-        #    b. If the email is sent successfully, mark the post as sent in the DB:
-        #       `self.db.mark_as_sent(post_id)`
-        #    c. Handle any errors during email sending (log them, maybe retry later).
 
-        # Example loop structure (conceptual, actual implementation needed):
-        # for post_id, title, content, post_date in unsent_posts: # Assuming structure of fetched posts
-        #     subject = f"New KVKK Data Breach Notification: {title}"
-        #     body = (f"A new data breach notification has been published by KVKK.\n\n"
-        #             f"Title: {title}\n"
-        #             f"Date: {post_date if post_date else 'N/A'}\n"
-        #             f"Content Snippet: {content[:250]}...\n\n"
-        #             f"For more details, please check the source or the application's database.")
-        #
-        #     # --- Add your email sending code here (e.g., using smtplib) ---
-        #     # email_sent_successfully = your_email_sending_function(subject, body, recipient_list)
-        #
-        #     if email_sent_successfully:
-        #         self.db.mark_as_sent(post_id)
-        #         logger.info(f"Successfully sent email for post ID {post_id}: {title}")
-        #     else:
-        #         logger.error(f"Failed to send email for post ID {post_id}: {title}")
+        logger.info(f"Found {len(unsent_posts)} posts to send notifications for.")
+
+        # TODO: Consider if the href for each post should be stored in the DB
+        # to provide a direct link in the email. Currently, it's not.
+
+        for post_id, title, post_content, post_date in unsent_posts:
+            original_subject = f"New KVKK Data Breach Notification: {title}"
+            subject = original_subject
+            
+            keyword_match_found = False
+            matched_keywords_list = []
+
+            if KEYWORD_WATCHLIST: # Only check if watchlist is not empty
+                for keyword in KEYWORD_WATCHLIST:
+                    # Case-insensitive check in title and content
+                    if keyword.lower() in title.lower() or keyword.lower() in post_content.lower():
+                        keyword_match_found = True
+                        matched_keywords_list.append(keyword)
+                        # No need to break here if we want to list all matched keywords
+
+            email_body_intro = "A new data breach notification has been published by KVKK."
+            if keyword_match_found:
+                subject = f"[KEYWORD MATCH] {original_subject}"
+                # Prepend matched keywords info to the email body intro
+                email_body_intro = f"Matched Keywords: {', '.join(matched_keywords_list)}\n\n{email_body_intro}"
+                logger.info(f"Keyword match found for post ID {post_id} ({title}): {', '.join(matched_keywords_list)}")
+
+            # Construct email body
+            body_lines = [
+                email_body_intro,
+                f"\nTitle: {title}",
+                f"Publication Date: {post_date if post_date else 'N/A'}",
+                f"\nContent Snippet:\n{post_content[:300]}...\n"
+                # TODO: Add a direct link here if href is stored in the future.
+                # Example: f"Link: {baseUrl}/<some_path_or_id_from_db>"
+            ]
+            body = "\n".join(body_lines)
+
+            msg = MIMEText(body, 'plain', 'utf-8') # Create MIMEText object, specify plain text and utf-8
+            msg['Subject'] = subject
+            msg['From'] = SENDER_EMAIL
+            msg['To'] = ", ".join(RECIPIENT_EMAILS) # Join list of recipients into a comma-separated string
+
+            try:
+                # Connect to SMTP server and send email
+                # Using a context manager for the SMTP connection ensures it's properly closed.
+                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                    server.ehlo() # Extended Hello to identify ourselves to the SMTP server
+                    if SMTP_PORT == 587: # Standard port for TLS
+                        server.starttls() # Upgrade connection to TLS
+                        server.ehlo() # Re-identify ourselves over the secure connection
+
+                    # Only attempt login if username and password are provided
+                    if SMTP_USERNAME and SMTP_PASSWORD:
+                        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+
+                    server.sendmail(SENDER_EMAIL, RECIPIENT_EMAILS, msg.as_string())
+                    logger.info(f"Successfully sent email for post ID {post_id}: {title}")
+                    self.db.mark_as_sent(post_id) # Mark as sent in DB
+
+                    # Brief pause to avoid overwhelming an SMTP server if sending many emails
+                    time.sleep(random.uniform(0.5, 1.5))
+
+            except smtplib.SMTPException as e:
+                logger.error(f"SMTP Error sending email for post ID {post_id} ('{title}'): {e}")
+            except Exception as e: # Catch any other unexpected errors
+                logger.error(f"Unexpected error sending email for post ID {post_id} ('{title}'): {e}", exc_info=True)
         
-        logger.warning("Email sending functionality is a STUB and not yet implemented. Unsent posts remain marked as unsent.")
+        if unsent_posts: # Log a summary if there were attempts
+             logger.info("Finished processing email notifications.")
+
+    def export_to_csv(self, filename="kvkk_export.csv"):
+        """
+        Exports all posts from the database to a CSV file.
+
+        Args:
+            filename (str, optional): The name of the CSV file to create.
+                                      Defaults to "kvkk_export.csv".
+        """
+        posts = self.db.get_all_posts()
+        if not posts:
+            logger.info("No data to export to CSV.")
+            return
+
+        header = ["id", "title", "post", "post_date", "scraped_date", "sent"]
+        try:
+            import csv # Import here to keep it local to the method if preferred
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(header)
+                writer.writerows(posts)
+            logger.info(f"Data successfully exported to {filename}")
+        except Exception as e:
+            logger.error(f"Error exporting data to CSV file {filename}: {e}", exc_info=True)
+
+    def export_to_json(self, filename="kvkk_export.json"):
+        """
+        Exports all posts from the database to a JSON file.
+
+        Args:
+            filename (str, optional): The name of the JSON file to create.
+                                      Defaults to "kvkk_export.json".
+        """
+        posts_tuples = self.db.get_all_posts()
+        if not posts_tuples:
+            logger.info("No data to export to JSON.")
+            return
+
+        header = ["id", "title", "post", "post_date", "scraped_date", "sent"]
+        # Convert list of tuples to list of dictionaries
+        posts_list_of_dicts = [dict(zip(header, row)) for row in posts_tuples]
+        
+        try:
+            import json # Import here
+            with open(filename, 'w', encoding='utf-8') as jsonfile:
+                json.dump(posts_list_of_dicts, jsonfile, indent=4, ensure_ascii=False)
+            logger.info(f"Data successfully exported to {filename}")
+        except Exception as e:
+            logger.error(f"Error exporting data to JSON file {filename}: {e}", exc_info=True)
+
 
 def main():
     """
@@ -534,10 +660,12 @@ def main():
     KVKK Data Breach Scraper Menu:
     1. Get all posts (scrapes all history, may take significant time)
     2. Refresh DB to get new posts (stops when the first existing post is found)
-    3. Send mail notifications (currently a placeholder, not functional)
+    3. Send mail notifications
+    4. Export all data to CSV
+    5. Export all data to JSON
     ''')
     
-        selection = input("Select an option (1, 2, or 3): ") # Get user's choice from input.
+        selection = input("Select an option (1-5): ") # Get user's choice from input.
 
         if selection == "1":
             logger.info("Starting scrape for all posts (refresh=False)...")
@@ -548,15 +676,21 @@ def main():
             scraper.scrape_data(refresh=True) # Call scrape_data in "refresh" mode.
             logger.info("Finished refreshing posts.")
         elif selection == "3":
-            logger.info("Attempting to send email notifications (placeholder function)...")
-            scraper.send_email_notifications() # Call the placeholder email function.
+            logger.info("Attempting to send email notifications...")
+            scraper.send_email_notifications()
+        elif selection == "4":
+            logger.info("Exporting data to CSV...")
+            scraper.export_to_csv() # Placeholder, will be implemented
+        elif selection == "5":
+            logger.info("Exporting data to JSON...")
+            scraper.export_to_json() # Placeholder, will be implemented
         else:
-            print('Unknown selection. Please run again and choose a valid option (1, 2, or 3).')
+            print('Unknown selection. Please run again and choose a valid option (1-5).')
             # Note: Calling main() recursively here for invalid input is generally discouraged for robustness,
             # as it can lead to a deep recursion stack on repeated errors. A loop within main() or simply exiting
             # are often better alternatives for more complex CLIs.
     except KeyboardInterrupt: # Gracefully handle Ctrl+C from the user to terminate the script.
-        logger.info("Scraping process interrupted by user (Ctrl+C). Exiting.")
+        logger.info("Process interrupted by user (Ctrl+C). Exiting.")
     except Exception as e: # Catch any other unexpected errors in the main execution flow.
         logger.error(f"An unexpected error occurred in the main function: {e}", exc_info=True) # Log with traceback.
     finally:
