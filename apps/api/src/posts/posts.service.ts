@@ -1,0 +1,104 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import type {
+  Post,
+  PostListQuery,
+  PostListResponse,
+  MarkAsReadResponse,
+} from '@kvkk/shared';
+
+@Injectable()
+export class PostsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async list(query: PostListQuery): Promise<PostListResponse> {
+    // Build where clause based on filters
+    const where: any = {};
+
+    // Search in title or content
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { content: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Filter by company (title contains)
+    if (query.company) {
+      where.title = { contains: query.company, mode: 'insensitive' };
+    }
+
+    // Filter by date range
+    if (query.dateFrom) {
+      where.incidentDate = {
+        ...where.incidentDate,
+        gte: query.dateFrom,
+      };
+    }
+    if (query.dateTo) {
+      where.incidentDate = {
+        ...where.incidentDate,
+        lte: query.dateTo,
+      };
+    }
+
+    // Filter by read status
+    if (query.unreadOnly !== undefined) {
+      where.read = !query.unreadOnly;
+    }
+
+    // Calculate pagination
+    const skip = (query.page - 1) * query.pageSize;
+
+    // Run count and findMany in parallel
+    const [total, items, unreadCount] = await Promise.all([
+      this.prisma.post.count({ where }),
+      this.prisma.post.findMany({
+        where,
+        orderBy: [{ publicationDate: 'desc' }, { scrapedAt: 'desc' }],
+        take: query.pageSize,
+        skip,
+      }),
+      this.prisma.post.count({ where: { read: false } }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      unreadCount,
+    };
+  }
+
+  async getById(id: string): Promise<Post | null> {
+    return this.prisma.post.findUnique({
+      where: { id: parseInt(id, 10) },
+    });
+  }
+
+  async markAsRead(id: string): Promise<MarkAsReadResponse | null> {
+    const post = await this.prisma.post.findUnique({
+      where: { id: parseInt(id, 10) },
+    });
+
+    if (!post) {
+      return null;
+    }
+
+    if (post.read) {
+      return { post, changed: false };
+    }
+
+    const updatedPost = await this.prisma.post.update({
+      where: { id: parseInt(id, 10) },
+      data: { read: true },
+    });
+
+    return { post: updatedPost, changed: true };
+  }
+
+  async getUnreadCount(): Promise<number> {
+    return this.prisma.post.count({ where: { read: false } });
+  }
+}

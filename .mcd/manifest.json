@@ -1,0 +1,283 @@
+{
+  "version": "1.0.0",
+  "feature": "nestjs-tanstack-kvkk-scraper",
+  "created": "2026-04-15T09:03:11Z",
+  "updated": "2026-04-15T09:15:00Z",
+  "statechart_file": ".mcd/statechart.mmd",
+  "entities": {
+    "Post": {
+      "description": "A scraped KVKK breach-notification post.",
+      "storage": "db",
+      "fields": {
+        "id": { "type": "string", "format": "uuid", "primary": true },
+        "sourceUrl": { "type": "string", "format": "url", "unique": true },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "publicationDate": { "type": "datetime", "nullable": true },
+        "incidentDate": { "type": "date", "nullable": true },
+        "scrapedAt": { "type": "datetime" },
+        "read": { "type": "boolean", "default": false },
+        "emailSent": { "type": "boolean", "default": false },
+        "emailSentAt": { "type": "datetime", "nullable": true }
+      }
+    },
+    "ScrapeRun": {
+      "description": "A single scrape-run execution, scheduled or manual.",
+      "storage": "db",
+      "fields": {
+        "id": { "type": "string", "format": "uuid", "primary": true },
+        "startedAt": { "type": "datetime" },
+        "finishedAt": { "type": "datetime", "nullable": true },
+        "mode": { "type": "enum", "values": ["SCHEDULED", "MANUAL", "FULL"] },
+        "pagesWalked": { "type": "integer", "default": 0 },
+        "postsFound": { "type": "integer", "default": 0 },
+        "postsInserted": { "type": "integer", "default": 0 },
+        "consecutiveDuplicates": { "type": "integer", "default": 0 },
+        "status": { "type": "enum", "values": ["RUNNING", "SUCCESS", "FAILED"] },
+        "error": { "type": "string", "nullable": true }
+      }
+    },
+    "EmailDelivery": {
+      "description": "A single email send attempt for a Post.",
+      "storage": "db",
+      "fields": {
+        "id": { "type": "string", "format": "uuid", "primary": true },
+        "postId": { "type": "string", "format": "uuid", "references": "Post.id" },
+        "recipient": { "type": "string", "format": "email" },
+        "subject": { "type": "string" },
+        "status": { "type": "enum", "values": ["PENDING", "SENT", "FAILED"] },
+        "sentAt": { "type": "datetime", "nullable": true },
+        "error": { "type": "string", "nullable": true }
+      }
+    },
+    "AppConfig": {
+      "description": "Runtime configuration sourced from env; not persisted in DB.",
+      "storage": "env",
+      "fields": {
+        "smtpHost": { "type": "string" },
+        "smtpPort": { "type": "integer" },
+        "smtpUser": { "type": "string" },
+        "smtpPass": { "type": "string", "secret": true },
+        "smtpFrom": { "type": "string", "format": "email" },
+        "notificationRecipients": { "type": "array", "items": "string" },
+        "cronExpression": { "type": "string", "default": "0 * * * *" },
+        "refreshMode": { "type": "enum", "values": ["PAGES", "DUPLICATES"], "default": "DUPLICATES" },
+        "refreshMaxPages": { "type": "integer", "default": 50 },
+        "refreshMaxConsecutiveDuplicates": { "type": "integer", "default": 5 }
+      }
+    }
+  },
+  "features": {
+    "ScheduledScraping": {
+      "description": "Cron-triggered scrape runs at a configurable cadence.",
+      "entities": ["ScrapeRun", "Post"],
+      "flows": ["scheduledScrape"]
+    },
+    "ManualRefresh": {
+      "description": "Operator-triggered scrape via UI POST /api/scrape/refresh with singleton lock.",
+      "entities": ["ScrapeRun", "Post"],
+      "flows": ["manualRefresh"]
+    },
+    "PostListing": {
+      "description": "Paginated, searchable, filterable list of Posts via REST.",
+      "entities": ["Post"],
+      "flows": ["apiList", "frontendListView"]
+    },
+    "PostDetail": {
+      "description": "Fetch a single Post by id.",
+      "entities": ["Post"],
+      "flows": ["apiDetail", "frontendDetailView"]
+    },
+    "MarkAsRead": {
+      "description": "Idempotently mark a Post read.",
+      "entities": ["Post"],
+      "flows": ["markAsRead"]
+    },
+    "EmailNotifications": {
+      "description": "Transactional email sweep for new unsent posts.",
+      "entities": ["Post", "EmailDelivery", "AppConfig"],
+      "flows": ["emailSweep"]
+    },
+    "LiveUpdates": {
+      "description": "SSE stream to push scrape and post lifecycle events to the frontend.",
+      "entities": ["Post"],
+      "flows": ["sseSubscribe"]
+    },
+    "Deduplication": {
+      "description": "Unique-source-url dedup with consecutive-duplicate threshold refresh mode.",
+      "entities": ["Post", "ScrapeRun"],
+      "flows": ["scheduledScrape", "manualRefresh"]
+    },
+    "DateExtraction": {
+      "description": "Extract publicationDate from listing metadata and incidentDate from body regex.",
+      "entities": ["Post"],
+      "flows": ["scheduledScrape"]
+    }
+  },
+  "flows": {
+    "scheduledScrape": {
+      "trigger": "cron(cronExpression)",
+      "steps": [
+        "Cron fires; acquire scrape singleton lock.",
+        "Create ScrapeRun with mode=SCHEDULED, status=RUNNING.",
+        "Enter statechart at idle -> fetching_list with startPage=1.",
+        "Walk pages per refreshMode until STOP condition.",
+        "Insert new Posts; count consecutive duplicates.",
+        "On finalize, trigger emailSweep flow.",
+        "Emit SSE scrape:completed; update ScrapeRun to SUCCESS."
+      ]
+    },
+    "manualRefresh": {
+      "trigger": "POST /api/scrape/refresh",
+      "steps": [
+        "Check scrape singleton lock; if busy return 409 {status: already-running}.",
+        "Create ScrapeRun with mode=MANUAL, status=RUNNING; return 202 {runId}.",
+        "Run statechart asynchronously identical to scheduledScrape.",
+        "Emit SSE scrape:started then scrape:completed on finalize."
+      ]
+    },
+    "apiList": {
+      "trigger": "GET /api/posts",
+      "steps": [
+        "Validate query via PostListQuerySchema (Zod).",
+        "Build Prisma query with LIKE on title+content for search, LIKE on title for company, incidentDate range, read flag.",
+        "Paginate (default 20, max 100); order publicationDate DESC NULLS LAST, scrapedAt DESC.",
+        "Compute unreadCount globally.",
+        "Respond PostListResponse."
+      ]
+    },
+    "apiDetail": {
+      "trigger": "GET /api/posts/:id",
+      "steps": [
+        "Lookup Post by id.",
+        "If missing return 404.",
+        "Respond PostDetailResponse."
+      ]
+    },
+    "markAsRead": {
+      "trigger": "POST /api/posts/:id/read",
+      "steps": [
+        "Lookup Post; 404 if missing.",
+        "If read=false set read=true (idempotent).",
+        "Emit SSE post:updated.",
+        "Respond MarkAsReadResponse."
+      ]
+    },
+    "emailSweep": {
+      "trigger": "end of scrape run (or retry cron)",
+      "steps": [
+        "Select Posts with emailSent=false ordered by scrapedAt ASC.",
+        "For each post, in a DB transaction: render template, sendMail, on success UPDATE emailSent=true/emailSentAt.",
+        "On SMTP failure rollback and log; continue with next post.",
+        "Emit SSE email:sent / email:failed per post."
+      ]
+    },
+    "sseSubscribe": {
+      "trigger": "GET /api/events",
+      "steps": [
+        "Open SSE stream; register client with event bus (RxJS Subject).",
+        "Stream events: scrape:started, scrape:completed, scrape:failed, post:created, post:updated, email:sent, email:failed.",
+        "On client disconnect, remove subscription; client auto-reconnects."
+      ]
+    },
+    "frontendListView": {
+      "trigger": "navigate /",
+      "steps": [
+        "TanStack Router loads list route.",
+        "TanStack Query fetches GET /api/posts with filters from URL search params.",
+        "Render list; subscribe to SSE and invalidate on post:created.",
+        "Show unread badge from unreadCount."
+      ]
+    },
+    "frontendDetailView": {
+      "trigger": "navigate /posts/$id",
+      "steps": [
+        "TanStack Router loads detail route.",
+        "TanStack Query fetches GET /api/posts/:id.",
+        "On mount fire POST /api/posts/:id/read mutation (idempotent).",
+        "Render title, content, publicationDate, incidentDate, sourceUrl."
+      ]
+    }
+  },
+  "dependencies": {
+    "backend": {
+      "@nestjs/core": "^10.4.0",
+      "@nestjs/common": "^10.4.0",
+      "@nestjs/platform-express": "^10.4.0",
+      "@nestjs/schedule": "^4.1.0",
+      "@nestjs/config": "^3.2.0",
+      "@prisma/client": "^5.20.0",
+      "cheerio": "^1.0.0",
+      "axios": "^1.7.0",
+      "nodemailer": "^6.9.14",
+      "handlebars": "^4.7.8",
+      "rxjs": "^7.8.1",
+      "zod": "^3.23.8"
+    },
+    "frontend": {
+      "@tanstack/react-router": "^1.58.0",
+      "@tanstack/react-query": "^5.56.0",
+      "@tanstack/react-start": "^1.58.0",
+      "react": "^18.3.1",
+      "react-dom": "^18.3.1",
+      "tailwindcss": "^3.4.10",
+      "zod": "^3.23.8"
+    },
+    "dev": {
+      "prisma": "^5.20.0",
+      "typescript": "^5.6.2",
+      "vitest": "^2.1.1",
+      "@types/node": "^22.7.0",
+      "eslint": "^9.11.0"
+    },
+    "shared": {
+      "zod": "^3.23.8"
+    }
+  },
+  "statechart": {
+    "initial": "idle",
+    "final": ["complete", "failed"],
+    "states": [
+      { "id": "idle", "kind": "initial" },
+      { "id": "fetching_list", "after": { "30000ms": "error.list_timeout" } },
+      { "id": "parsing_list" },
+      { "id": "fetching_post", "after": { "30000ms": "error.post_timeout" } },
+      { "id": "parsing_post" },
+      { "id": "checking_duplicate" },
+      { "id": "inserting_post" },
+      { "id": "advancing_page", "kind": "decision" },
+      { "id": "sending_emails" },
+      { "id": "complete", "kind": "final" },
+      { "id": "error.list_timeout", "kind": "error" },
+      { "id": "error.post_timeout", "kind": "error" },
+      { "id": "error.parse", "kind": "error" },
+      { "id": "error.db", "kind": "error" },
+      { "id": "error.email", "kind": "error" },
+      { "id": "failed", "kind": "final" }
+    ],
+    "transitions": [
+      { "from": "idle", "to": "fetching_list", "event": "START", "action": "initRun", "input": "ScrapeRunRequest", "output": "ScrapeRunContext" },
+      { "from": "fetching_list", "to": "parsing_list", "event": "RESPONSE_OK", "action": "parseListingPage", "input": "HtmlResponse", "output": "ListingPage" },
+      { "from": "fetching_list", "to": "error.list_timeout", "event": "TIMEOUT", "action": "handleListTimeout", "input": "ScrapeRunContext", "output": "ScrapeRunContext" },
+      { "from": "parsing_list", "to": "fetching_post", "event": "NEXT_POST", "action": "fetchPost", "input": "PostUrl", "output": "HtmlResponse" },
+      { "from": "parsing_list", "to": "advancing_page", "event": "LIST_EMPTY", "action": "advancePage", "input": "ScrapeRunContext", "output": "PageDecision" },
+      { "from": "fetching_post", "to": "parsing_post", "event": "RESPONSE_OK", "action": "parsePostPage", "input": "HtmlResponse", "output": "ParsedPost" },
+      { "from": "fetching_post", "to": "error.post_timeout", "event": "TIMEOUT", "action": "handlePostTimeout", "input": "ScrapeRunContext", "output": "ScrapeRunContext" },
+      { "from": "parsing_post", "to": "checking_duplicate", "event": "PARSED", "action": "checkDuplicate", "input": "ParsedPost", "output": "DuplicateCheckResult" },
+      { "from": "parsing_post", "to": "error.parse", "event": "PARSE_FAILED", "action": "handleParseError", "input": "HtmlResponse", "output": "ScrapeRunContext" },
+      { "from": "checking_duplicate", "to": "inserting_post", "event": "NEW", "action": "insertPost", "input": "ParsedPost", "output": "Post" },
+      { "from": "checking_duplicate", "to": "advancing_page", "event": "DUPLICATE", "action": "recordDuplicate", "input": "DuplicateCheckResult", "output": "ScrapeRunContext" },
+      { "from": "inserting_post", "to": "parsing_list", "event": "INSERTED", "action": "continueList", "input": "Post", "output": "ScrapeRunContext" },
+      { "from": "inserting_post", "to": "error.db", "event": "DB_ERROR", "action": "handleDbError", "input": "ScrapeRunContext", "output": "ScrapeRunContext" },
+      { "from": "advancing_page", "to": "fetching_list", "event": "CONTINUE", "action": "nextPage", "input": "PageDecision", "output": "PageUrl" },
+      { "from": "advancing_page", "to": "sending_emails", "event": "STOP", "action": "finalizeRun", "input": "ScrapeRunContext", "output": "ScrapeRunSummary" },
+      { "from": "sending_emails", "to": "complete", "event": "DONE", "action": "closeRun", "input": "ScrapeRunSummary", "output": "ScrapeRunSummary" },
+      { "from": "sending_emails", "to": "error.email", "event": "EMAIL_FAILED", "action": "logEmailError", "input": "ScrapeRunSummary", "output": "ScrapeRunSummary" },
+      { "from": "error.list_timeout", "to": "fetching_list", "event": "RETRY", "action": "retryListFetch", "input": "ScrapeRunContext", "output": "PageUrl" },
+      { "from": "error.post_timeout", "to": "fetching_post", "event": "RETRY", "action": "retryPostFetch", "input": "ScrapeRunContext", "output": "PostUrl" },
+      { "from": "error.parse", "to": "advancing_page", "event": "SKIP", "action": "skipPost", "input": "ScrapeRunContext", "output": "PageDecision" },
+      { "from": "error.db", "to": "failed", "event": "ABORT", "action": "abortRun", "input": "ScrapeRunContext", "output": "ScrapeRunSummary" },
+      { "from": "error.email", "to": "complete", "event": "CONTINUE", "action": "closeRun", "input": "ScrapeRunSummary", "output": "ScrapeRunSummary" }
+    ]
+  }
+}

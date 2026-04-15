@@ -1,0 +1,39 @@
+stateDiagram-v2
+    [*] --> idle
+
+    idle --> fetching_list: START / initRun [ScrapeRunRequest -> ScrapeRunContext]
+
+    fetching_list --> parsing_list: RESPONSE_OK / parseListingPage [HtmlResponse -> ListingPage]
+    fetching_list --> error_list_timeout: TIMEOUT / handleListTimeout
+    fetching_list --> fetching_list: after 30000ms
+
+    parsing_list --> fetching_post: NEXT_POST / fetchPost [PostUrl -> HtmlResponse]
+    parsing_list --> advancing_page: LIST_EMPTY / advancePage [ScrapeRunContext -> PageDecision]
+
+    fetching_post --> parsing_post: RESPONSE_OK / parsePostPage [HtmlResponse -> ParsedPost]
+    fetching_post --> error_post_timeout: TIMEOUT / handlePostTimeout
+    fetching_post --> fetching_post: after 30000ms
+
+    parsing_post --> checking_duplicate: PARSED / checkDuplicate [ParsedPost -> DuplicateCheckResult]
+    parsing_post --> error_parse: PARSE_FAILED / handleParseError
+
+    checking_duplicate --> inserting_post: NEW / insertPost [ParsedPost -> Post]
+    checking_duplicate --> advancing_page: DUPLICATE / recordDuplicate [DuplicateCheckResult -> ScrapeRunContext]
+
+    inserting_post --> parsing_list: INSERTED / continueList [Post -> ScrapeRunContext]
+    inserting_post --> error_db: DB_ERROR / handleDbError
+
+    advancing_page --> fetching_list: CONTINUE / nextPage [PageDecision -> PageUrl]
+    advancing_page --> sending_emails: STOP / finalizeRun [ScrapeRunContext -> ScrapeRunSummary]
+
+    sending_emails --> complete: DONE / closeRun [ScrapeRunSummary -> ScrapeRunSummary]
+    sending_emails --> error_email: EMAIL_FAILED / logEmailError
+
+    error_list_timeout --> fetching_list: RETRY / retryListFetch
+    error_post_timeout --> fetching_post: RETRY / retryPostFetch
+    error_parse --> advancing_page: SKIP / skipPost
+    error_db --> failed: ABORT / abortRun
+    error_email --> complete: CONTINUE / closeRun
+
+    complete --> [*]
+    failed --> [*]

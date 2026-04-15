@@ -1,0 +1,52 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Post {
+  id                Int             @id @default(autoincrement())
+  sourceUrl         String          @unique
+  title             String
+  content           String
+  publicationDate   DateTime?
+  incidentDate      DateTime?
+  scrapedAt         DateTime        @default(now())
+  read              Boolean         @default(false)
+  emailSent         Boolean         @default(false)
+  emailSentAt       DateTime?
+  deliveries        EmailDelivery[]
+
+  @@index([publicationDate])
+  @@index([scrapedAt])
+  @@index([read])
+}
+
+model ScrapeRun {
+  id                    Int       @id @default(autoincrement())
+  startedAt             DateTime  @default(now())
+  finishedAt            DateTime?
+  mode                  String
+  pagesWalked           Int       @default(0)
+  postsFound            Int       @default(0)
+  postsInserted         Int       @default(0)
+  consecutiveDuplicates Int       @default(0)
+  status                String    @default("RUNNING")
+  error                 String?
+}
+
+model EmailDelivery {
+  id        Int       @id @default(autoincrement())
+  postId    Int
+  post      Post      @relation(fields: [postId], references: [id])
+  recipient String
+  subject   String
+  status    String    @default("PENDING")
+  sentAt    DateTime?
+  error     String?
+
+  @@index([postId])
+}
