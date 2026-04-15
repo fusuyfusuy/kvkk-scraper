@@ -1,0 +1,13 @@
+{
+  "language": "typescript",
+  "file_ext": ".ts",
+  "src_dir": "apps",
+  "types_dir": "packages/shared/src/types",
+  "test_dir": "apps",
+  "validation_lib": "zod",
+  "lint_cmd": "pnpm -r lint",
+  "typecheck_cmd": "pnpm -r typecheck",
+  "test_cmd": "pnpm -r test",
+  "test_framework": "vitest",
+  "skip_skeleton_gate": true
+}

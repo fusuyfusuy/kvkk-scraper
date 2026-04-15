@@ -1,0 +1,262 @@
+{
+  "phase0": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:03:11Z"
+  },
+  "phase1": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:15:00Z"
+  },
+  "phase2": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:30:00Z"
+  },
+  "files": {
+    "package.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "pnpm-workspace.yaml": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "tsconfig.base.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    ".env.example": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "packages/shared/package.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "packages/shared/src/index.ts": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/package.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/tsconfig.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/package.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/tsconfig.json": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app.config.ts": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/tailwind.config.ts": {
+      "status": "config",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/prisma/schema.prisma": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/main.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/app.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/prisma/prisma.service.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/config/config.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/posts/posts.controller.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/posts/posts.service.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/posts/posts.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/scraper.service.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/http.client.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/kvkk.parser.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/scraper.controller.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/scraper.scheduler.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/scraper.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/email/email.service.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/email/email.templates.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/email/email.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/sse/sse.service.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/sse/sse.controller.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/sse/sse.module.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/root.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/routes/index.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/routes/posts.$id.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/lib/api.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/lib/queries.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/lib/sse.ts": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/components/PostCard.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/components/FilterBar.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/web/app/components/UnreadBadge.tsx": {
+      "status": "skeleton",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    }
+  }
+}

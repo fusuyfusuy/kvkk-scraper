@@ -1,0 +1,116 @@
+// CONTRACT:
+// Models: Post, ScrapeRun, EmailDelivery
+//
+// Post:
+//   - id: String @id @default(uuid())
+//   - sourceUrl: String @unique  <-- dedup key
+//   - title: String
+//   - content: String
+//   - publicationDate: DateTime?
+//   - incidentDate: DateTime?
+//   - scrapedAt: DateTime @default(now())
+//   - read: Boolean @default(false)
+//   - emailSent: Boolean @default(false)
+//   - emailSentAt: DateTime?
+//   Indexes: @@index([read]), @@index([emailSent]), @@index([publicationDate])
+//
+// ScrapeRun:
+//   - id: String @id @default(uuid())
+//   - startedAt: DateTime @default(now())
+//   - finishedAt: DateTime?
+//   - mode: ScrapeMode (enum: SCHEDULED, MANUAL, FULL)
+//   - pagesWalked: Int @default(0)
+//   - postsFound: Int @default(0)
+//   - postsInserted: Int @default(0)
+//   - consecutiveDuplicates: Int @default(0)
+//   - status: ScrapeStatus (enum: RUNNING, SUCCESS, FAILED)
+//   - error: String?
+//   Indexes: @@index([status]), @@index([startedAt])
+//
+// EmailDelivery:
+//   - id: String @id @default(uuid())
+//   - postId: String (FK -> Post.id)
+//   - recipient: String
+//   - subject: String
+//   - status: EmailStatus (enum: PENDING, SENT, FAILED)
+//   - sentAt: DateTime?
+//   - error: String?
+//   Relations: post Post @relation(fields: [postId], references: [id])
+//   Indexes: @@index([postId]), @@index([status])
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ScrapeMode {
+  SCHEDULED
+  MANUAL
+  FULL
+}
+
+enum ScrapeStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Post {
+  id              String    @id @default(uuid())
+  sourceUrl       String    @unique
+  title           String
+  content         String
+  publicationDate DateTime?
+  incidentDate    DateTime?
+  scrapedAt       DateTime  @default(now())
+  read            Boolean   @default(false)
+  emailSent       Boolean   @default(false)
+  emailSentAt     DateTime?
+
+  emailDeliveries EmailDelivery[]
+
+  @@index([read])
+  @@index([emailSent])
+  @@index([publicationDate])
+}
+
+model ScrapeRun {
+  id                   String       @id @default(uuid())
+  startedAt            DateTime     @default(now())
+  finishedAt           DateTime?
+  mode                 ScrapeMode
+  pagesWalked          Int          @default(0)
+  postsFound           Int          @default(0)
+  postsInserted        Int          @default(0)
+  consecutiveDuplicates Int         @default(0)
+  status               ScrapeStatus
+  error                String?
+
+  @@index([status])
+  @@index([startedAt])
+}
+
+model EmailDelivery {
+  id        String      @id @default(uuid())
+  postId    String
+  recipient String
+  subject   String
+  status    EmailStatus
+  sentAt    DateTime?
+  error     String?
+
+  post Post @relation(fields: [postId], references: [id])
+
+  @@index([postId])
+  @@index([status])
+}
