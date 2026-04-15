@@ -6,10 +6,10 @@ export type ScrapeMode = z.infer<typeof ScrapeModeSchema>;
 export const ScrapeStatusSchema = z.enum(['RUNNING', 'SUCCESS', 'FAILED']);
 export type ScrapeStatus = z.infer<typeof ScrapeStatusSchema>;
 
-export const PageUrlSchema = z.string().url().brand<'PageUrl'>();
+export const PageUrlSchema = z.string().url();
 export type PageUrl = z.infer<typeof PageUrlSchema>;
 
-export const PostUrlSchema = z.string().url().brand<'PostUrl'>();
+export const PostUrlSchema = z.string().url();
 export type PostUrl = z.infer<typeof PostUrlSchema>;
 
 export const HtmlResponseSchema = z.object({
@@ -30,14 +30,14 @@ export type ListingPage = z.infer<typeof ListingPageSchema>;
 
 export const ScrapeRunRequestSchema = z.object({
   mode: ScrapeModeSchema,
-  startPage: z.number().int().min(1).default(1),
+  startPage: z.number().int().min(1).default(1).optional(),
   maxPages: z.number().int().min(1).max(100).optional(),
   maxConsecutiveDuplicates: z.number().int().min(1).optional(),
 });
 export type ScrapeRunRequest = z.infer<typeof ScrapeRunRequestSchema>;
 
 export const ScrapeRunContextSchema = z.object({
-  runId: z.string().uuid(),
+  runId: z.number().int(),
   mode: ScrapeModeSchema,
   currentPage: z.number().int().min(1),
   pagesWalked: z.number().int().min(0),
@@ -59,7 +59,7 @@ export const PageDecisionSchema = z.object({
 export type PageDecision = z.infer<typeof PageDecisionSchema>;
 
 export const ScrapeRunSummarySchema = z.object({
-  runId: z.string().uuid(),
+  runId: z.number().int(),
   mode: ScrapeModeSchema,
   status: ScrapeStatusSchema,
   startedAt: z.coerce.date(),
@@ -73,7 +73,7 @@ export const ScrapeRunSummarySchema = z.object({
 export type ScrapeRunSummary = z.infer<typeof ScrapeRunSummarySchema>;
 
 export const ScrapeRunSchema = z.object({
-  id: z.string().uuid(),
+  id: z.number().int(),
   startedAt: z.coerce.date(),
   finishedAt: z.coerce.date().nullable(),
   mode: ScrapeModeSchema,

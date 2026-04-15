@@ -6,22 +6,11 @@ import type { SseEvent } from '@kvkk/shared';
 export class SseService {
   private readonly subject = new Subject<SseEvent>();
 
-  // CONTRACT:
-  // Return an Observable that clients subscribe to for SSE events.
-  // Output: Observable<SseEvent> (packages/shared/src/types/api.ts)
-  // Logic:
-  //   1. Return this.subject.asObservable()
-  getEvents(): Observable<SseEvent> {
-    throw new Error('not implemented');
+  emit(event: SseEvent): void {
+    this.subject.next(event);
   }
 
-  // CONTRACT:
-  // Emit a new event to all connected SSE clients.
-  // Input: event (SseEvent from packages/shared/src/types/api.ts)
-  // Output: void
-  // Logic:
-  //   1. this.subject.next({ ...event, timestamp: new Date() })
-  emit(event: Omit<SseEvent, 'timestamp'>): void {
-    throw new Error('not implemented');
+  asObservable(): Observable<SseEvent> {
+    return this.subject.asObservable();
   }
 }

@@ -2,11 +2,6 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { AppConfigSchema } from '@kvkk/shared';
 
-// CONTRACT:
-// Validates all env vars against AppConfigSchema (zod) on startup.
-// Throws on missing/invalid config so the app fails fast.
-// Exported globally so any module can inject ConfigService.
-
 @Global()
 @Module({
   imports: [

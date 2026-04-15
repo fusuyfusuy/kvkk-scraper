@@ -6,12 +6,12 @@
     "target": "ES2022",
     "jsx": "react-jsx",
     "outDir": "dist",
-    "rootDir": "app",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
     "paths": {
       "@kvkk/shared": ["../../packages/shared/src/index.ts"]
     }
   },
-  "include": ["app/**/*", "app.config.ts"],
+  "include": ["app/**/*"],
   "exclude": ["node_modules", "dist"]
 }

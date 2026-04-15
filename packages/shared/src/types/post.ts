@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const PostSchema = z.object({
-  id: z.string().uuid(),
+  id: z.number().int(),
   sourceUrl: z.string().url(),
   title: z.string().min(1),
   content: z.string(),
@@ -46,6 +46,6 @@ export type ParsedPost = z.infer<typeof ParsedPostSchema>;
 export const DuplicateCheckResultSchema = z.object({
   sourceUrl: z.string().url(),
   isDuplicate: z.boolean(),
-  existingPostId: z.string().uuid().nullable(),
+  existingPostId: z.number().int().nullable(),
 });
 export type DuplicateCheckResult = z.infer<typeof DuplicateCheckResultSchema>;

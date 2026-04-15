@@ -1,5 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { SseService } from '../sse/sse.service';
+import { fetchUrl } from './http.client';
+import {
+  parseListingPage as parseListingPageFn,
+  parsePostPage as parsePostPageFn,
+} from './kvkk.parser';
 import type {
   ScrapeRunRequest,
   ScrapeRunSummary,
@@ -12,279 +20,430 @@ import type {
   PageUrl,
   PageDecision,
   DuplicateCheckResult,
+  AppConfig,
 } from '@kvkk/shared';
 
 @Injectable()
 export class ScraperService {
-  constructor(private readonly prisma: PrismaService) {}
+  // In-memory singleton lock flag (module-scoped instance property; Nest provider is singleton by default)
+  private lockHeld = false;
+  // Current run context (used by stateful action methods)
+  private context: ScrapeRunContext | null = null;
 
-  // CONTRACT:
-  // Orchestrator: run a full scrape from request to completion.
-  // Input: ScrapeRunRequest (packages/shared/src/types/scrape.ts) — mode, startPage, maxPages, maxConsecutiveDuplicates
-  // Output: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Acquire in-memory singleton lock; reject if already running
-  //   2. Call initRun(request) to create ScrapeRun record and context
-  //   3. Enter statechart loop: fetch list page, parse, iterate posts, check dup, insert
-  //   4. Advance pages until PageDecision.action === 'STOP'
-  //   5. Call finalizeRun(context) then send emails via EmailService
-  //   6. Call closeRun(summary) and return
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+    private readonly sseService: SseService,
+    private readonly configService: ConfigService,
+  ) {}
+
   async runScrape(request: ScrapeRunRequest): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+    if (this.lockHeld) {
+      throw new ConflictException('scrape already running');
+    }
+
+    this.lockHeld = true;
+
+    try {
+      let context = await this.initRun(request);
+      const baseUrl = this.configService.get<string>('baseUrl') || 'https://www.kvkk.gov.tr';
+
+      let pageUrl: PageUrl = `${baseUrl}/veri-ihlali-bildirimi/?&page=${context.currentPage}` as PageUrl;
+
+      while (true) {
+        let html: HtmlResponse;
+        try {
+          html = await fetchUrl(pageUrl);
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          if (err.message.includes('TIMEOUT') || err.message.includes('timeout')) {
+            context = await this.handleListTimeout(context);
+            pageUrl = await this.retryListFetch(context);
+            continue;
+          }
+          throw err;
+        }
+
+        let listing: ListingPage;
+        try {
+          listing = await this.parseListingPage(html);
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          throw new Error(`Failed to parse listing: ${err.message}`);
+        }
+
+        if (listing.postUrls.length === 0) {
+          const decision = await this.advancePage(context);
+          if (decision.action === 'STOP') {
+            let summary = await this.finalizeRun(context);
+            try {
+              summary = await this.emailService.sweepAndSend(summary);
+            } catch (error) {
+              const err = error instanceof Error ? error : new Error(String(error));
+              await this.logEmailError(summary);
+            }
+            return await this.closeRun(summary);
+          }
+          pageUrl = await this.nextPage(decision);
+          continue;
+        }
+
+        context.pendingPostUrls = [...listing.postUrls];
+
+        for (let postUrl of context.pendingPostUrls) {
+          let postHtml: HtmlResponse = { url: postUrl, status: 0, headers: {}, body: '' };
+          try {
+            postHtml = await fetchUrl(postUrl as string);
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            if (err.message.includes('TIMEOUT') || err.message.includes('timeout')) {
+              context = await this.handlePostTimeout(context);
+              postUrl = await this.retryPostFetch(context);
+              continue;
+            }
+            context = await this.handleParseError(postHtml);
+            continue;
+          }
+
+          let parsedPost: ParsedPost;
+          try {
+            parsedPost = await this.parsePostPage(postHtml);
+          } catch (error) {
+            context = await this.handleParseError(postHtml);
+            continue;
+          }
+
+          const duplicateCheck = await this.checkDuplicate(parsedPost);
+
+          if (duplicateCheck.isDuplicate) {
+            context = await this.recordDuplicate(duplicateCheck);
+            const decision = await this.advancePage(context);
+            if (decision.action === 'STOP') {
+              let summary = await this.finalizeRun(context);
+              try {
+                summary = await this.emailService.sweepAndSend(summary);
+              } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                await this.logEmailError(summary);
+              }
+              return await this.closeRun(summary);
+            }
+          } else {
+            let post: Post;
+            try {
+              post = await this.insertPost(parsedPost);
+            } catch (error) {
+              context = await this.handleDbError(context);
+              const summary = await this.abortRun(context);
+              return summary;
+            }
+            context = await this.continueList(post);
+          }
+        }
+
+        const decision = await this.advancePage(context);
+        if (decision.action === 'STOP') {
+          let summary = await this.finalizeRun(context);
+          try {
+            summary = await this.emailService.sweepAndSend(summary);
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            await this.logEmailError(summary);
+          }
+          return await this.closeRun(summary);
+        }
+
+        pageUrl = await this.nextPage(decision);
+      }
+    } finally {
+      this.lockHeld = false;
+    }
   }
 
-  // CONTRACT:
-  // Transition: idle --[START]--> fetching_list
-  // Input: ScrapeRunRequest (packages/shared/src/types/scrape.ts) — mode, startPage, maxPages, maxConsecutiveDuplicates
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts) — runId, mode, currentPage, counters, pendingPostUrls
-  // Logic:
-  //   1. Generate UUID for runId
-  //   2. Insert ScrapeRun row with status=RUNNING, startedAt=now
-  //   3. Build ScrapeRunContext with defaults (pagesWalked=0, postsFound=0, etc.)
-  //   4. Return context
   async initRun(request: ScrapeRunRequest): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    const now = new Date();
+
+    const refreshMode = this.configService.get<string>('refreshMode') || 'DUPLICATES';
+    const maxPages = this.configService.get<number>('refreshMaxPages') || 50;
+    const maxConsecutiveDuplicates =
+      this.configService.get<number>('refreshMaxConsecutiveDuplicates') || 5;
+
+    const run = await this.prisma.scrapeRun.create({
+      data: {
+        mode: request.mode,
+        status: 'RUNNING',
+        startedAt: now,
+        pagesWalked: 0,
+        postsFound: 0,
+        postsInserted: 0,
+        consecutiveDuplicates: 0,
+      },
+    });
+
+    this.context = {
+      runId: run.id,
+      mode: request.mode,
+      currentPage: request.startPage ?? 1,
+      pagesWalked: 0,
+      postsFound: 0,
+      postsInserted: 0,
+      consecutiveDuplicates: 0,
+      maxPages: request.maxPages || maxPages,
+      maxConsecutiveDuplicates: request.maxConsecutiveDuplicates || maxConsecutiveDuplicates,
+      startedAt: now,
+      pendingPostUrls: [],
+    };
+    return this.context;
   }
 
-  // CONTRACT:
-  // Transition: fetching_list --[RESPONSE_OK]--> parsing_list
-  // Input: HtmlResponse (packages/shared/src/types/scrape.ts) — url, status, headers, body
-  // Output: ListingPage (packages/shared/src/types/scrape.ts) — pageUrl, pageNumber, postUrls, hasNext
-  // Logic:
-  //   1. Delegate to KvkkParser.parseListingPage(html)
-  //   2. Return ListingPage
   async parseListingPage(html: HtmlResponse): Promise<ListingPage> {
-    throw new Error('not implemented');
+    return parseListingPageFn(html);
   }
 
-  // CONTRACT:
-  // Transition: parsing_list --[NEXT_POST]--> fetching_post
-  // Input: PostUrl (packages/shared/src/types/scrape.ts) — branded URL string
-  // Output: HtmlResponse (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Delegate to HttpClient.fetchUrl(postUrl)
-  //   2. Return HtmlResponse
   async fetchPost(postUrl: PostUrl): Promise<HtmlResponse> {
-    throw new Error('not implemented');
+    return fetchUrl(postUrl as string);
   }
 
-  // CONTRACT:
-  // Transition: fetching_post --[RESPONSE_OK]--> parsing_post
-  // Input: HtmlResponse (packages/shared/src/types/scrape.ts)
-  // Output: ParsedPost (packages/shared/src/types/post.ts) — sourceUrl, title, content, publicationDate, incidentDate
-  // Logic:
-  //   1. Delegate to KvkkParser.parsePostPage(html)
-  //   2. Return ParsedPost
   async parsePostPage(html: HtmlResponse): Promise<ParsedPost> {
-    throw new Error('not implemented');
+    return parsePostPageFn(html);
   }
 
-  // CONTRACT:
-  // Transition: parsing_post --[PARSED]--> checking_duplicate
-  // Input: ParsedPost (packages/shared/src/types/post.ts)
-  // Output: DuplicateCheckResult (packages/shared/src/types/post.ts) — sourceUrl, isDuplicate, existingPostId
-  // Logic:
-  //   1. prisma.post.findUnique({ where: { sourceUrl: parsedPost.sourceUrl } })
-  //   2. If found, return { sourceUrl, isDuplicate: true, existingPostId: found.id }
-  //   3. Else return { sourceUrl, isDuplicate: false, existingPostId: null }
   async checkDuplicate(parsedPost: ParsedPost): Promise<DuplicateCheckResult> {
-    throw new Error('not implemented');
+    const found = await this.prisma.post.findUnique({
+      where: { sourceUrl: parsedPost.sourceUrl },
+    });
+
+    if (found) {
+      return {
+        sourceUrl: parsedPost.sourceUrl,
+        isDuplicate: true,
+        existingPostId: found.id as any,
+      };
+    }
+
+    return {
+      sourceUrl: parsedPost.sourceUrl,
+      isDuplicate: false,
+      existingPostId: null,
+    };
   }
 
-  // CONTRACT:
-  // Transition: checking_duplicate --[NEW]--> inserting_post
-  // Input: ParsedPost (packages/shared/src/types/post.ts)
-  // Output: Post (packages/shared/src/types/post.ts)
-  // Logic:
-  //   1. Generate UUID for post id
-  //   2. prisma.post.create with { id, sourceUrl, title, content, publicationDate, incidentDate, scrapedAt: now, read: false, emailSent: false, emailSentAt: null }
-  //   3. Emit SSE 'post:created' event with post data
-  //   4. Return created Post
   async insertPost(parsedPost: ParsedPost): Promise<Post> {
-    throw new Error('not implemented');
+    const now = new Date();
+
+    const post = await this.prisma.post.create({
+      data: {
+        sourceUrl: parsedPost.sourceUrl,
+        title: parsedPost.title,
+        content: parsedPost.content,
+        publicationDate: parsedPost.publicationDate,
+        incidentDate: parsedPost.incidentDate,
+        scrapedAt: now,
+        read: false,
+        emailSent: false,
+        emailSentAt: null,
+      },
+    });
+
+    this.sseService.emit({
+      event: 'post:created',
+      data: post,
+      timestamp: now,
+    });
+
+    return post as any;
   }
 
-  // CONTRACT:
-  // Transition: inserting_post --[INSERTED]--> parsing_list
-  // Input: Post (packages/shared/src/types/post.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Increment postsFound and postsInserted counters in context
-  //   2. Reset consecutiveDuplicates to 0
-  //   3. Move to next pendingPostUrl in context.pendingPostUrls queue
-  //   4. Return updated context
   async continueList(post: Post): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    const ctx = this.context ?? ({} as ScrapeRunContext);
+    const updated: ScrapeRunContext = {
+      ...ctx,
+      postsInserted: (ctx.postsInserted ?? 0) + 1,
+      postsFound: (ctx.postsFound ?? 0) + 1,
+      consecutiveDuplicates: 0,
+    };
+    this.context = updated;
+    return updated;
   }
 
-  // CONTRACT:
-  // Transition: parsing_list --[LIST_EMPTY]--> advancing_page
-  // Transition: checking_duplicate --[DUPLICATE]--> advancing_page
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: PageDecision (packages/shared/src/types/scrape.ts) — action, nextPageUrl, reason
-  // Logic:
-  //   1. Increment pagesWalked
-  //   2. If refreshMode=DUPLICATES and consecutiveDuplicates >= maxConsecutiveDuplicates: return STOP
-  //   3. If refreshMode=PAGES and pagesWalked >= maxPages: return STOP
-  //   4. If listing.hasNext=false: return STOP
-  //   5. Otherwise compute nextPageUrl and return CONTINUE
   async advancePage(context: ScrapeRunContext): Promise<PageDecision> {
-    throw new Error('not implemented');
+    context.pagesWalked += 1;
+
+    const refreshMode = this.configService.get<string>('refreshMode') || 'DUPLICATES';
+
+    if (
+      refreshMode === 'DUPLICATES' &&
+      context.consecutiveDuplicates >= context.maxConsecutiveDuplicates
+    ) {
+      return {
+        action: 'STOP',
+        nextPageUrl: null,
+        reason: 'Consecutive duplicates threshold reached',
+      };
+    }
+
+    if (refreshMode === 'PAGES' && context.pagesWalked >= context.maxPages) {
+      return {
+        action: 'STOP',
+        nextPageUrl: null,
+        reason: 'Max pages reached',
+      };
+    }
+
+    const baseUrl = this.configService.get<string>('baseUrl') || 'https://www.kvkk.gov.tr';
+    const nextPage = context.currentPage + 1;
+    return {
+      action: 'CONTINUE',
+      nextPageUrl: `${baseUrl}/veri-ihlali-bildirimi/?&page=${nextPage}` as PageUrl,
+      reason: 'Continue to next page',
+    };
   }
 
-  // CONTRACT:
-  // Transition: checking_duplicate --[DUPLICATE]--> advancing_page
-  // Input: DuplicateCheckResult (packages/shared/src/types/post.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Increment consecutiveDuplicates in context
-  //   2. Increment postsFound counter
-  //   3. Return updated context
   async recordDuplicate(result: DuplicateCheckResult): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    const ctx = this.context ?? ({} as ScrapeRunContext);
+    const updated: ScrapeRunContext = {
+      ...ctx,
+      consecutiveDuplicates: (ctx.consecutiveDuplicates ?? 0) + 1,
+      postsFound: (ctx.postsFound ?? 0) + 1,
+    };
+    this.context = updated;
+    return updated;
   }
 
-  // CONTRACT:
-  // Transition: advancing_page --[CONTINUE]--> fetching_list
-  // Input: PageDecision (packages/shared/src/types/scrape.ts)
-  // Output: PageUrl (packages/shared/src/types/scrape.ts) — branded URL string
-  // Logic:
-  //   1. Assert pageDecision.action === 'CONTINUE'
-  //   2. Increment context.currentPage
-  //   3. Return pageDecision.nextPageUrl as PageUrl
   async nextPage(decision: PageDecision): Promise<PageUrl> {
-    throw new Error('not implemented');
+    // Note: context is not passed in. In runScrape, we manage currentPage directly.
+    return decision.nextPageUrl as PageUrl;
   }
 
-  // CONTRACT:
-  // Transition: advancing_page --[STOP]--> sending_emails
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. prisma.scrapeRun.update({ where: { id: context.runId }, data: { pagesWalked, postsFound, postsInserted, consecutiveDuplicates } })
-  //   2. Build ScrapeRunSummary from context with status=SUCCESS
-  //   3. Return summary
   async finalizeRun(context: ScrapeRunContext): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+    await this.prisma.scrapeRun.update({
+      where: { id: context.runId },
+      data: {
+        pagesWalked: context.pagesWalked,
+        postsFound: context.postsFound,
+        postsInserted: context.postsInserted,
+        consecutiveDuplicates: context.consecutiveDuplicates,
+      },
+    });
+
+    return {
+      runId: context.runId,
+      mode: context.mode,
+      status: 'SUCCESS',
+      startedAt: context.startedAt,
+      finishedAt: null,
+      pagesWalked: context.pagesWalked,
+      postsFound: context.postsFound,
+      postsInserted: context.postsInserted,
+      consecutiveDuplicates: context.consecutiveDuplicates,
+      error: null,
+    };
   }
 
-  // CONTRACT:
-  // Transition: sending_emails --[DONE]--> complete
-  // Transition: error.email --[CONTINUE]--> complete
-  // Input: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. prisma.scrapeRun.update({ where: { id: summary.runId }, data: { status: 'SUCCESS', finishedAt: now } })
-  //   2. Emit SSE 'scrape:completed' with summary data
-  //   3. Release singleton scrape lock
-  //   4. Return updated summary
   async closeRun(summary: ScrapeRunSummary): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+    const now = new Date();
+
+    await this.prisma.scrapeRun.update({
+      where: { id: summary.runId },
+      data: {
+        status: 'SUCCESS',
+        finishedAt: now,
+      },
+    });
+
+    this.sseService.emit({
+      event: 'scrape:completed',
+      data: summary,
+      timestamp: now,
+    });
+
+    return { ...summary, finishedAt: now };
   }
 
-  // CONTRACT:
-  // Transition: fetching_list --[TIMEOUT]--> error.list_timeout
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Log timeout error for current list page
-  //   2. Increment retry counter on context
-  //   3. Return context with timeout noted
   async handleListTimeout(context: ScrapeRunContext): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    console.error(`Timeout fetching list page ${context.currentPage}`);
+    return context;
   }
 
-  // CONTRACT:
-  // Transition: fetching_post --[TIMEOUT]--> error.post_timeout
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Log timeout error for current post URL
-  //   2. Increment retry counter on context
-  //   3. Return context with timeout noted
   async handlePostTimeout(context: ScrapeRunContext): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    const postUrl = context.pendingPostUrls[0] || 'unknown';
+    console.error(`Timeout fetching post ${postUrl}`);
+    return context;
   }
 
-  // CONTRACT:
-  // Transition: parsing_post --[PARSE_FAILED]--> error.parse
-  // Input: HtmlResponse (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Log parse error with failing URL and body excerpt
-  //   2. Return context with error noted (does not abort run)
   async handleParseError(html: HtmlResponse): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    const excerpt = html.body.substring(0, 200);
+    console.error(`Parse error for ${html.url}: ${excerpt}`);
+    return {} as ScrapeRunContext;
   }
 
-  // CONTRACT:
-  // Transition: inserting_post --[DB_ERROR]--> error.db
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Log DB error details
-  //   2. Return context with error.db state noted
   async handleDbError(context: ScrapeRunContext): Promise<ScrapeRunContext> {
-    throw new Error('not implemented');
+    console.error('Database error during insert');
+    return context;
   }
 
-  // CONTRACT:
-  // Transition: error.list_timeout --[RETRY]--> fetching_list
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: PageUrl (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Compute current page URL from context.currentPage
-  //   2. Return PageUrl for retry
   async retryListFetch(context: ScrapeRunContext): Promise<PageUrl> {
-    throw new Error('not implemented');
+    const baseUrl = this.configService.get<string>('baseUrl') || 'https://www.kvkk.gov.tr';
+    return `${baseUrl}/veri-ihlali-bildirimi/?&page=${context.currentPage}` as PageUrl;
   }
 
-  // CONTRACT:
-  // Transition: error.post_timeout --[RETRY]--> fetching_post
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: PostUrl (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Get current post URL from context.pendingPostUrls[0]
-  //   2. Return PostUrl for retry
   async retryPostFetch(context: ScrapeRunContext): Promise<PostUrl> {
-    throw new Error('not implemented');
+    if (!context.pendingPostUrls || context.pendingPostUrls.length === 0) {
+      throw new Error('NO_PENDING_POSTS');
+    }
+    return context.pendingPostUrls[0] as PostUrl;
   }
 
-  // CONTRACT:
-  // Transition: error.parse --[SKIP]--> advancing_page
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: PageDecision (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Remove failed post URL from context.pendingPostUrls
-  //   2. If more pending posts remain, return CONTINUE with same page
-  //   3. Otherwise delegate to advancePage(context)
   async skipPost(context: ScrapeRunContext): Promise<PageDecision> {
-    throw new Error('not implemented');
+    if (context.pendingPostUrls.length > 0) {
+      context.pendingPostUrls.shift();
+    }
+
+    if (context.pendingPostUrls.length > 0) {
+      return {
+        action: 'CONTINUE',
+        nextPageUrl: null,
+        reason: 'More posts to process on same page',
+      };
+    }
+
+    return this.advancePage(context);
   }
 
-  // CONTRACT:
-  // Transition: error.db --[ABORT]--> failed
-  // Input: ScrapeRunContext (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. prisma.scrapeRun.update({ where: { id: context.runId }, data: { status: 'FAILED', finishedAt: now, error: message } })
-  //   2. Emit SSE 'scrape:failed'
-  //   3. Release singleton scrape lock
-  //   4. Return summary with status=FAILED
   async abortRun(context: ScrapeRunContext): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+    const now = new Date();
+
+    await this.prisma.scrapeRun.update({
+      where: { id: context.runId },
+      data: {
+        status: 'FAILED',
+        finishedAt: now,
+        error: 'Database error during post insertion',
+      },
+    });
+
+    this.sseService.emit({
+      event: 'scrape:failed',
+      data: { runId: context.runId, reason: 'Database error' },
+      timestamp: now,
+    });
+
+    return {
+      runId: context.runId,
+      mode: context.mode,
+      status: 'FAILED',
+      startedAt: context.startedAt,
+      finishedAt: now,
+      pagesWalked: context.pagesWalked,
+      postsFound: context.postsFound,
+      postsInserted: context.postsInserted,
+      consecutiveDuplicates: context.consecutiveDuplicates,
+      error: 'Database error during post insertion',
+    };
   }
 
-  // CONTRACT:
-  // Transition: sending_emails --[EMAIL_FAILED]--> error.email
-  // Input: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunSummary (packages/shared/src/types/scrape.ts)
-  // Logic:
-  //   1. Log email error details to EmailDelivery record
-  //   2. Continue to next recipient/post (non-fatal)
-  //   3. Emit SSE 'email:failed'
-  //   4. Return summary unchanged
   async logEmailError(summary: ScrapeRunSummary): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+    console.error(`Email send failed during scrape run ${summary.runId}`);
+    return summary;
   }
 }

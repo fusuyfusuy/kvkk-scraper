@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { ScraperService } from './scraper.service';
 
@@ -10,6 +10,8 @@ import { ScraperService } from './scraper.service';
 
 @Injectable()
 export class ScraperScheduler {
+  private readonly logger = new Logger(ScraperScheduler.name);
+
   constructor(
     private readonly scraperService: ScraperService,
     private readonly configService: ConfigService,
@@ -21,8 +23,12 @@ export class ScraperScheduler {
   //   1. Build ScrapeRunRequest with mode='SCHEDULED'
   //   2. Call scraperService.runScrape(request) — handles lock internally
   //   3. Errors are caught and logged; never propagate to crash scheduler
-  @Cron('0 * * * *') // default; fill agent replaces with dynamic from config
+  @Cron(CronExpression.EVERY_HOUR)
   async scheduledScrape(): Promise<void> {
-    throw new Error('not implemented');
+    try {
+      await this.scraperService.runScrape({ mode: 'SCHEDULED' });
+    } catch (error) {
+      this.logger.error(`Scheduled scrape failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

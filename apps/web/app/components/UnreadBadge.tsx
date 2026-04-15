@@ -1,14 +1,13 @@
-import { useUnreadCount } from '../lib/queries';
+export function UnreadBadge({ count }: { count: number }) {
+  if (count === 0) {
+    return null;
+  }
 
-// CONTRACT:
-// Renders a badge showing the number of unread posts.
-// Fetches unreadCount via useUnreadCount() hook (refetches every 60s).
-// Output: badge element or null if count === 0
-// Logic:
-//   1. const { data } = useUnreadCount()
-//   2. If data?.unreadCount === 0 or undefined, render nothing
-//   3. Render a red badge span with the unreadCount number
+  const displayCount = count > 99 ? '99+' : String(count);
 
-export function UnreadBadge() {
-  throw new Error('not implemented');
+  return (
+    <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-semibold text-white bg-red-500 rounded-full">
+      {displayCount}
+    </span>
+  );
 }

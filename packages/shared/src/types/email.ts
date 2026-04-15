@@ -4,8 +4,8 @@ export const EmailStatusSchema = z.enum(['PENDING', 'SENT', 'FAILED']);
 export type EmailStatus = z.infer<typeof EmailStatusSchema>;
 
 export const EmailDeliverySchema = z.object({
-  id: z.string().uuid(),
-  postId: z.string().uuid(),
+  id: z.number().int(),
+  postId: z.number().int(),
   recipient: z.string().email(),
   subject: z.string().min(1),
   status: EmailStatusSchema,

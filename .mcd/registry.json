@@ -11,6 +11,10 @@
     "status": "complete",
     "timestamp": "2026-04-15T09:30:00Z"
   },
+  "phase3": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:45:00Z"
+  },
   "files": {
     "package.json": {
       "status": "config",
@@ -85,178 +89,249 @@
       "verifyAttempts": 0
     },
     "apps/api/prisma/schema.prisma": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:32:29Z"
     },
     "apps/api/src/main.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/app.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/prisma/prisma.service.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:32:29Z"
     },
     "apps/api/src/config/config.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00.000Z"
     },
     "apps/api/src/posts/posts.controller.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/posts/posts.service.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/posts/posts.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/scraper/scraper.service.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:30:00Z"
     },
     "apps/api/src/scraper/http.client.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:33:00Z"
     },
     "apps/api/src/scraper/kvkk.parser.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:33:00Z"
     },
     "apps/api/src/scraper/scraper.controller.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:39:05Z"
     },
     "apps/api/src/scraper/scraper.scheduler.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:39:05Z"
     },
     "apps/api/src/scraper/scraper.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/email/email.service.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/email/email.templates.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00.000Z"
     },
     "apps/api/src/email/email.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/sse/sse.service.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00.000Z"
     },
     "apps/api/src/sse/sse.controller.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/api/src/sse/sse.module.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T00:00:00Z"
     },
     "apps/web/app/root.tsx": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:40:19Z"
     },
     "apps/web/app/routes/index.tsx": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:40:19Z"
     },
     "apps/web/app/routes/posts.$id.tsx": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T09:40:19Z"
     },
     "apps/web/app/lib/api.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:15:00Z"
     },
     "apps/web/app/lib/queries.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T10:00:00Z"
     },
     "apps/web/app/lib/sse.ts": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T10:00:00Z"
     },
     "apps/web/app/components/PostCard.tsx": {
-      "status": "skeleton",
+      "status": "verified",
       "hash": null,
-      "fillAttempts": 0,
-      "verifyAttempts": 0
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:15:00Z"
     },
     "apps/web/app/components/FilterBar.tsx": {
-      "status": "skeleton",
+      "status": "verified",
+      "hash": null,
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:15:00Z"
+    },
+    "apps/web/app/components/UnreadBadge.tsx": {
+      "status": "verified",
+      "hash": null,
+      "fillAttempts": 1,
+      "verifyAttempts": 0,
+      "timestamp": "2026-04-15T12:15:00Z"
+    },
+    "apps/api/src/scraper/scraper.service.spec.ts": {
+      "status": "test",
       "hash": null,
       "fillAttempts": 0,
       "verifyAttempts": 0
     },
-    "apps/web/app/components/UnreadBadge.tsx": {
-      "status": "skeleton",
+    "apps/api/src/scraper/http.client.spec.ts": {
+      "status": "test",
       "hash": null,
       "fillAttempts": 0,
       "verifyAttempts": 0
+    },
+    "apps/api/src/scraper/kvkk.parser.spec.ts": {
+      "status": "test",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/posts/posts.service.spec.ts": {
+      "status": "test",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    },
+    "apps/api/src/email/email.service.spec.ts": {
+      "status": "test",
+      "hash": null,
+      "fillAttempts": 0,
+      "verifyAttempts": 0
+    }
+  },
+  "phase4": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:42:49Z"
+  },
+  "phase5": {
+    "status": "complete",
+    "timestamp": "2026-04-15T09:56:23Z",
+    "results": {
+      "typecheck": "pass",
+      "tests": "43/43 pass"
     }
   }
 }

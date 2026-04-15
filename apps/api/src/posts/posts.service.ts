@@ -11,52 +11,94 @@ import type {
 export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // CONTRACT:
-  // List posts with filters, search, and pagination.
-  // Input: PostListQuery (packages/shared/src/types/post.ts)
-  // Output: PostListResponse (packages/shared/src/types/api.ts)
-  // Logic:
-  //   1. Build Prisma where clause: LIKE on title+content for search, LIKE on title for company, incidentDate range, read flag
-  //   2. Run count and findMany in parallel (Promise.all)
-  //   3. Order by publicationDate DESC NULLS LAST, then scrapedAt DESC
-  //   4. Compute unreadCount globally (separate count where read=false)
-  //   5. Return { items, total, page, pageSize, unreadCount }
   async list(query: PostListQuery): Promise<PostListResponse> {
-    throw new Error('not implemented');
+    // Build where clause based on filters
+    const where: any = {};
+
+    // Search in title or content
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { content: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Filter by company (title contains)
+    if (query.company) {
+      where.title = { contains: query.company, mode: 'insensitive' };
+    }
+
+    // Filter by date range
+    if (query.dateFrom) {
+      where.incidentDate = {
+        ...where.incidentDate,
+        gte: query.dateFrom,
+      };
+    }
+    if (query.dateTo) {
+      where.incidentDate = {
+        ...where.incidentDate,
+        lte: query.dateTo,
+      };
+    }
+
+    // Filter by read status
+    if (query.unreadOnly !== undefined) {
+      where.read = !query.unreadOnly;
+    }
+
+    // Calculate pagination
+    const skip = (query.page - 1) * query.pageSize;
+
+    // Run count and findMany in parallel
+    const [total, items, unreadCount] = await Promise.all([
+      this.prisma.post.count({ where }),
+      this.prisma.post.findMany({
+        where,
+        orderBy: [{ publicationDate: 'desc' }, { scrapedAt: 'desc' }],
+        take: query.pageSize,
+        skip,
+      }),
+      this.prisma.post.count({ where: { read: false } }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      unreadCount,
+    };
   }
 
-  // CONTRACT:
-  // Fetch single post by UUID.
-  // Input: id (string UUID)
-  // Output: Post | null (packages/shared/src/types/post.ts)
-  // Logic:
-  //   1. prisma.post.findUnique({ where: { id } })
-  //   2. Return post or null
   async getById(id: string): Promise<Post | null> {
-    throw new Error('not implemented');
+    return this.prisma.post.findUnique({
+      where: { id: parseInt(id, 10) },
+    });
   }
 
-  // CONTRACT:
-  // Idempotently mark post as read.
-  // Input: id (string UUID)
-  // Output: MarkAsReadResponse (packages/shared/src/types/api.ts)
-  // Logic:
-  //   1. Fetch post by id; return null if not found
-  //   2. If post.read already true, return { post, changed: false }
-  //   3. prisma.post.update({ where: { id }, data: { read: true } })
-  //   4. Return { post: updatedPost, changed: true }
   async markAsRead(id: string): Promise<MarkAsReadResponse | null> {
-    throw new Error('not implemented');
+    const post = await this.prisma.post.findUnique({
+      where: { id: parseInt(id, 10) },
+    });
+
+    if (!post) {
+      return null;
+    }
+
+    if (post.read) {
+      return { post, changed: false };
+    }
+
+    const updatedPost = await this.prisma.post.update({
+      where: { id: parseInt(id, 10) },
+      data: { read: true },
+    });
+
+    return { post: updatedPost, changed: true };
   }
 
-  // CONTRACT:
-  // Get global unread count.
-  // Input: none
-  // Output: number
-  // Logic:
-  //   1. prisma.post.count({ where: { read: false } })
-  //   2. Return count
   async getUnreadCount(): Promise<number> {
-    throw new Error('not implemented');
+    return this.prisma.post.count({ where: { read: false } });
   }
 }

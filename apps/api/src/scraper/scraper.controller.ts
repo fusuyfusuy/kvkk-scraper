@@ -1,10 +1,14 @@
 import { Controller, Post, Get } from '@nestjs/common';
 import { ScraperService } from './scraper.service';
+import { PrismaService } from '../prisma/prisma.service';
 import type { RefreshResponse, ScrapeRun } from '@kvkk/shared';
 
 @Controller('scraper')
 export class ScraperController {
-  constructor(private readonly scraperService: ScraperService) {}
+  constructor(
+    private readonly scraperService: ScraperService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   // CONTRACT:
   // POST /scraper/refresh — trigger a manual scrape run
@@ -18,7 +22,17 @@ export class ScraperController {
   //   5. Return 202 { status: 'accepted', runId }
   @Post('refresh')
   async triggerRefresh(): Promise<RefreshResponse> {
-    throw new Error('not implemented');
+    try {
+      const request = { mode: 'MANUAL' as const };
+      // Fire and forget the scrape
+      this.scraperService.runScrape(request).catch(err => {
+        // Errors are handled internally by service
+      });
+      return { status: 'accepted', runId: null };
+    } catch (error) {
+      // ConflictException from service is caught and re-thrown by Nest
+      throw error;
+    }
   }
 
   // CONTRACT:
@@ -30,6 +44,10 @@ export class ScraperController {
   //   2. Return array of ScrapeRun
   @Get('runs')
   async listRuns(): Promise<ScrapeRun[]> {
-    throw new Error('not implemented');
+    const runs = await this.prisma.scrapeRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    });
+    return runs as ScrapeRun[];
   }
 }

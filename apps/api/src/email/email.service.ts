@@ -1,52 +1,169 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { SseService } from '../sse/sse.service';
 import type { Post, ScrapeRunSummary } from '@kvkk/shared';
+import * as nodemailer from 'nodemailer';
+import { renderBreachEmail } from './email.templates';
 
 @Injectable()
-export class EmailService {
+export class EmailService implements OnModuleInit {
+  private transporter: nodemailer.Transporter | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {}
+    private readonly sseService: SseService,
+  ) {
+    this.initTransporter();
+  }
 
-  // CONTRACT:
-  // Send breach notification email for a single post to a single recipient.
-  // Input: post (Post from packages/shared/src/types/post.ts), recipient (string email)
-  // Output: void
-  // Logic:
-  //   1. Render breach notification template via Handlebars with EmailTemplateData
-  //   2. nodemailer.sendMail({ from, to: recipient, subject, html })
-  //   3. On success: prisma.emailDelivery.create({ postId, recipient, subject, status: 'SENT', sentAt })
-  //   4. On failure: prisma.emailDelivery.create({ postId, recipient, subject, status: 'FAILED', error })
-  //   5. Throw on failure so caller can handle
+  private initTransporter(): void {
+    const smtpHost = this.configService.get<string>('smtpHost');
+    const smtpPort = this.configService.get<number>('smtpPort');
+    const smtpUser = this.configService.get<string>('smtpUser');
+    const smtpPass = this.configService.get<string>('smtpPass');
+
+    this.transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+  }
+
+  async onModuleInit(): Promise<void> {
+    this.initTransporter();
+  }
+
   async sendBreachNotification(post: Post, recipient: string): Promise<void> {
-    throw new Error('not implemented');
+    // Validate recipient email address
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(recipient)) {
+      throw new Error(`Invalid recipient email address: ${recipient}`);
+    }
+
+    const smtpFrom = this.configService.get<string>('smtpFrom');
+
+    const emailData = {
+      title: post.title,
+      publicationDate: post.publicationDate,
+      incidentDate: post.incidentDate,
+      sourceUrl: post.sourceUrl,
+      bodyExcerpt: post.content,
+    };
+
+    const { subject, html, text } = renderBreachEmail(emailData);
+
+    try {
+      await this.transporter!.sendMail({
+        from: smtpFrom,
+        to: recipient,
+        subject,
+        html,
+        text,
+      });
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.emailDelivery.create({
+          data: {
+            postId: post.id,
+            recipient,
+            subject,
+            status: 'SENT',
+            sentAt: new Date(),
+          },
+        });
+
+        await tx.post.update({
+          where: { id: post.id },
+          data: {
+            emailSent: true,
+            emailSentAt: new Date(),
+          },
+        });
+      });
+
+      this.sseService.emit({
+        event: 'email:sent',
+        data: { postId: post.id, recipient },
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+
+      await this.prisma.emailDelivery.create({
+        data: {
+          postId: post.id,
+          recipient,
+          subject,
+          status: 'FAILED',
+          error: err.message,
+        },
+      });
+
+      throw err;
+    }
   }
 
-  // CONTRACT:
-  // Email sweep: send emails for all posts with emailSent=false.
-  // Input: summary (ScrapeRunSummary from packages/shared/src/types/scrape.ts)
-  // Output: ScrapeRunSummary (updated with email results)
-  // Logic:
-  //   1. prisma.post.findMany({ where: { emailSent: false }, orderBy: { scrapedAt: 'asc' } })
-  //   2. For each post:
-  //       a. In a DB transaction: sendBreachNotification for each recipient
-  //       b. On success: prisma.post.update({ emailSent: true, emailSentAt: now })
-  //       c. On failure: log error, emit SSE 'email:failed', continue
-  //   3. Return updated summary
-  async closeRun(summary: ScrapeRunSummary): Promise<ScrapeRunSummary> {
-    throw new Error('not implemented');
+  async sweepAndSend(summary: ScrapeRunSummary): Promise<ScrapeRunSummary> {
+    const posts = await this.prisma.post.findMany({
+      where: { emailSent: false },
+      orderBy: { scrapedAt: 'asc' },
+    });
+
+    const recipients = this.configService.get<string[]>('notificationRecipients') || [];
+
+    for (const post of posts) {
+      for (const recipient of recipients) {
+        try {
+          await this.sendBreachNotification(post as Post, recipient);
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+
+          await this.logEmailError(post.id, recipient, '', err);
+
+          this.sseService.emit({
+            event: 'email:failed',
+            data: {
+              postId: String(post.id),
+              recipient,
+              error: err.message,
+            },
+            timestamp: new Date(),
+          });
+        }
+      }
+    }
+
+    return summary;
   }
 
-  // CONTRACT:
-  // Log an email send failure to EmailDelivery table.
-  // Input: postId (string), recipient (string), subject (string), error (Error)
-  // Output: void
-  // Logic:
-  //   1. prisma.emailDelivery.upsert or create with status='FAILED', error=error.message
-  //   2. Log error to console
-  async logEmailError(postId: string, recipient: string, subject: string, error: Error): Promise<void> {
-    throw new Error('not implemented');
+  async logEmailError(
+    postId: number | string,
+    recipient: string,
+    subject: string,
+    error: Error,
+  ): Promise<void> {
+    console.error(
+      `Email send failed - postId: ${postId}, recipient: ${recipient}, error: ${error.message}`,
+    );
+
+    try {
+      await this.prisma.emailDelivery.create({
+        data: {
+          postId: typeof postId === 'string' ? parseInt(postId, 10) : postId,
+          recipient,
+          subject: subject || 'Unknown Subject',
+          status: 'FAILED',
+          error: error.message,
+        },
+      });
+    } catch (dbError) {
+      console.error(`Failed to log email error to database: ${dbError}`);
+    }
   }
 }
