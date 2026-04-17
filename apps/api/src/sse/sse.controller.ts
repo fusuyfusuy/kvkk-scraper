@@ -1,9 +1,11 @@
 import { Controller, Get, Sse, Header, MessageEvent } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { SseService } from './sse.service';
 import type { SseEvent } from '@kvkk/shared';
 
+@ApiTags('events')
 @Controller('events')
 export class SseController {
   constructor(private readonly sseService: SseService) {}

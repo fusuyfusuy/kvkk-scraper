@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Query, NotFoundException } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import type {
   PostListQuery,
@@ -9,6 +10,7 @@ import type {
   StatsResponse,
 } from '@kvkk/shared';
 
+@ApiTags('posts')
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}

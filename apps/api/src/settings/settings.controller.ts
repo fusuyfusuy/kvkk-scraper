@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Put, BadRequestException } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { EmailService } from '../email/email.service';
 import {
@@ -7,6 +8,7 @@ import {
   type SettingsResponse,
 } from '@kvkk/shared';
 
+@ApiTags('settings')
 @Controller('settings')
 export class SettingsController {
   constructor(
