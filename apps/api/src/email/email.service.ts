@@ -20,6 +20,7 @@ export class EmailService implements OnModuleInit {
 
   private initTransporter(): void {
     const c = this.runtime.getCurrent();
+    if (!c) return;
     this.transporter = nodemailer.createTransport({
       host: c.smtpHost,
       port: c.smtpPort,
