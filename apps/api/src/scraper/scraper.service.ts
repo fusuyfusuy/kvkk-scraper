@@ -1,4 +1,4 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -26,6 +26,7 @@ import type {
 
 @Injectable()
 export class ScraperService {
+  private readonly logger = new Logger('ScraperService');
   // In-memory singleton lock flag (module-scoped instance property; Nest provider is singleton by default)
   private lockHeld = false;
   // Current run context (used by stateful action methods)
@@ -157,6 +158,35 @@ export class ScraperService {
 
         pageUrl = await this.nextPage(decision);
       }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Scrape run failed: ${err.message}`, err.stack);
+      if (this.context) {
+        try {
+          const now = new Date();
+          await this.prisma.scrapeRun.update({
+            where: { id: this.context.runId },
+            data: {
+              status: 'FAILED',
+              finishedAt: now,
+              error: err.message,
+              pagesWalked: this.context.pagesWalked,
+              postsFound: this.context.postsFound,
+              postsInserted: this.context.postsInserted,
+              consecutiveDuplicates: this.context.consecutiveDuplicates,
+            },
+          });
+          this.sseService.emit({
+            event: 'scrape:failed',
+            data: { runId: this.context.runId, reason: err.message },
+            timestamp: now,
+          });
+        } catch (updateError) {
+          const uErr = updateError instanceof Error ? updateError : new Error(String(updateError));
+          this.logger.error(`Failed to mark run FAILED: ${uErr.message}`, uErr.stack);
+        }
+      }
+      throw err;
     } finally {
       this.lockHeld = false;
     }
