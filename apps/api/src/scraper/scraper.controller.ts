@@ -1,8 +1,10 @@
 import { Controller, Post, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ScraperService } from './scraper.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RefreshResponse, ScrapeRun } from '@kvkk/shared';
 
+@ApiTags('scraper')
 @Controller('scraper')
 export class ScraperController {
   constructor(

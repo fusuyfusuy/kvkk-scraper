@@ -1,7 +1,9 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import type { EmailDeliveryListResponse } from '@kvkk/shared';
 
+@ApiTags('email-deliveries')
 @Controller('email-deliveries')
 export class EmailController {
   constructor(private readonly prisma: PrismaService) {}
