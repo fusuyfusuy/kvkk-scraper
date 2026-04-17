@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
+import { Route as RootRoute } from '../root';
 import { Button } from '../components/form/Button';
 import { Field } from '../components/form/Field';
 import { Input } from '../components/form/Input';
@@ -188,6 +189,8 @@ function MailSettingsPage() {
   );
 }
 
-export const Route = createFileRoute('/settings/mail' as never)({
+export const Route = createRoute({
+  getParentRoute: () => RootRoute,
+  path: '/settings/mail',
   component: MailSettingsPage,
 });

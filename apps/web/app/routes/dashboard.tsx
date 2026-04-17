@@ -1,4 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
+import { Route as RootRoute } from '../root';
 import { UnreadBadge } from '../components/UnreadBadge';
 import { Button } from '../components/form/Button';
 import { Card } from '../components/form/Card';
@@ -123,6 +124,8 @@ function DashboardPage() {
   );
 }
 
-export const Route = createFileRoute('/' as never)({
+export const Route = createRoute({
+  getParentRoute: () => RootRoute,
+  path: '/',
   component: DashboardPage,
 });

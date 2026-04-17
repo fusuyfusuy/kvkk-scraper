@@ -11,7 +11,6 @@ import { Route as PostDetailRoute } from './routes/posts.$id';
 import { Route as ScrapeSettingsRoute } from './routes/settings.scrape';
 import { Route as MailSettingsRoute } from './routes/settings.mail';
 
-// @ts-expect-error TanStack Router file-based routes require codegen for full type safety
 const routeTree = RootRoute.addChildren([DashboardRoute, PostsRoute, PostDetailRoute, ScrapeSettingsRoute, MailSettingsRoute]);
 const router = createRouter({ routeTree });
 
