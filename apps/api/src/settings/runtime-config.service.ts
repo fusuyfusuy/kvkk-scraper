@@ -40,7 +40,9 @@ export class RuntimeConfigService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.current = this.readEnv();
+  }
 
   async onModuleInit(): Promise<void> {
     await this.reload();
