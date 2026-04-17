@@ -1,5 +1,8 @@
 import axios, { AxiosError } from 'axios';
+import { Logger } from '@nestjs/common';
 import type { HtmlResponse } from '@kvkk/shared';
+
+const logger = new Logger('HttpClient');
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
@@ -42,6 +45,8 @@ export async function fetchUrl(url: string): Promise<HtmlResponse> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const started = Date.now();
+    logger.log(`GET ${url} (attempt ${attempt + 1}/${MAX_RETRIES})`);
     try {
       const userAgent = getRandomUserAgent();
       const response = await axios.get(url, {
@@ -51,6 +56,12 @@ export async function fetchUrl(url: string): Promise<HtmlResponse> {
         responseType: 'text',
         validateStatus: (status) => status < 400,
       });
+
+      const duration = Date.now() - started;
+      const size = typeof response.data === 'string'
+        ? Buffer.byteLength(response.data, 'utf8')
+        : (response.data?.length ?? 0);
+      logger.log(`GET ${url} -> ${response.status} ${response.statusText ?? ''} (${duration}ms, ${size} bytes)`);
 
       const headersRecord: Record<string, string> = {};
       if (response.headers) {
@@ -69,12 +80,18 @@ export async function fetchUrl(url: string): Promise<HtmlResponse> {
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const duration = Date.now() - started;
+      const reason = axios.isAxiosError(error) && error.response?.status
+        ? `HTTP ${error.response.status}`
+        : lastError.message;
 
       if (!isRetryableError(error) || attempt === MAX_RETRIES - 1) {
+        logger.error(`GET ${url} failed after ${attempt + 1} attempts (${duration}ms): ${lastError.message}`);
         throw new Error(`Failed to fetch ${url}: ${lastError.message}`);
       }
 
       const backoffMs = getBackoffMs(attempt);
+      logger.warn(`GET ${url} retry ${attempt + 2}/${MAX_RETRIES} after ${Math.round(backoffMs)}ms: ${reason}`);
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
   }
