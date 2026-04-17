@@ -1,173 +1,285 @@
 import { load } from 'cheerio';
-import type { HtmlResponse, ListingPage } from '@kvkk/shared';
-import type { ParsedPost } from '@kvkk/shared';
+import type { HtmlResponse, ListingPage, ParsedPost } from '@kvkk/shared';
 
-const TURKISH_MONTHS: Record<string, string> = {
-  ocak: '01',
-  şubat: '02',
-  mart: '03',
-  nisan: '04',
-  mayıs: '05',
-  haziran: '06',
-  temmuz: '07',
-  ağustos: '08',
-  eylül: '09',
-  ekim: '10',
-  kasım: '11',
-  aralık: '12',
+const TURKISH_MONTHS: Record<string, number> = {
+  ocak: 1,
+  şubat: 2,
+  mart: 3,
+  nisan: 4,
+  mayıs: 5,
+  haziran: 6,
+  temmuz: 7,
+  ağustos: 8,
+  eylül: 9,
+  ekim: 10,
+  kasım: 11,
+  aralık: 12,
 };
 
+/**
+ * Resolve a possibly-relative URL against the page base.
+ */
 function resolveUrl(href: string, baseUrl: string): string {
-  if (href.startsWith('http://') || href.startsWith('https://')) {
+  try {
+    return new URL(href, baseUrl).toString();
+  } catch {
+    if (href.startsWith('/')) return `https://www.kvkk.gov.tr${href}`;
     return href;
   }
-  if (href.startsWith('/')) {
-    const url = new URL(baseUrl);
-    return `${url.protocol}//${url.host}${href}`;
-  }
-  return `https://www.kvkk.gov.tr${href}`;
 }
 
-function parseDate(dateStr: string | null): Date | null {
-  if (!dateStr) return null;
-
-  const trimmed = dateStr.trim();
-
-  try {
-    const parsed = new Date(trimmed);
-    if (!isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  } catch {
-    // Fall through
-  }
-
-  const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
-  if (ddmmyyyyMatch) {
-    const [, day, month, year] = ddmmyyyyMatch;
-    if (!day || !month || !year) return null;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  }
-
-  return null;
+/**
+ * Parse Turkish long-form dates like "15 Nisan 2026, Çarşamba" or "15 Nisan 2026".
+ * Returns null on failure.
+ */
+export function parseTurkishLongDate(input: string | null | undefined): Date | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  const match = trimmed.match(
+    /(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})/i,
+  );
+  if (!match) return null;
+  const [, dayStr, monthName, yearStr] = match;
+  if (!dayStr || !monthName || !yearStr) return null;
+  const month = TURKISH_MONTHS[monthName.toLocaleLowerCase('tr-TR')];
+  if (!month) return null;
+  const day = parseInt(dayStr, 10);
+  const year = parseInt(yearStr, 10);
+  if (!day || !year) return null;
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
+/**
+ * Parse DD.MM.YYYY — used for inline incident/detection dates in the article body.
+ */
+export function parseDottedDate(input: string | null | undefined): Date | null {
+  if (!input) return null;
+  const match = input.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!match) return null;
+  const [, dayStr, monthStr, yearStr] = match;
+  const day = parseInt(dayStr!, 10);
+  const month = parseInt(monthStr!, 10);
+  const year = parseInt(yearStr!, 10);
+  if (!day || !month || !year) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+/**
+ * Extract the numeric post id from a /Icerik/{id}/slug URL path.
+ */
+export function extractPostId(url: string): string | null {
+  const match = url.match(/\/Icerik\/(\d+)\//i);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Parse the /veri-ihlali-bildirimi listing page against the current markup:
+ *   .news__box > .news__box-meta > a (title + href)
+ *   .news__box > .news__box-meta > p.date
+ *   .pagination li.page-item a[href*="page="]
+ */
 export function parseListingPage(html: HtmlResponse): ListingPage {
   const $ = load(html.body);
   const postUrls: string[] = [];
 
-  const mainPost = $('.blog-post-container a').first();
-  if (mainPost.length) {
-    const href = mainPost.attr('href');
-    if (href) {
-      postUrls.push(resolveUrl(href, html.url));
-    }
-  }
-
-  $('.blog-grid-title a').each((_, elem) => {
-    const href = $(elem).attr('href');
-    if (href) {
-      postUrls.push(resolveUrl(href, html.url));
+  $('.news__box').each((_, elem) => {
+    // Prefer the meta anchor; fall back to the image anchor.
+    const metaAnchor = $(elem).find('.news__box-meta > a[href]').first();
+    const anchor = metaAnchor.length
+      ? metaAnchor
+      : $(elem).find('a[href]').first();
+    const href = anchor.attr('href');
+    if (!href) return;
+    const absolute = resolveUrl(href, html.url);
+    if (!postUrls.includes(absolute)) {
+      postUrls.push(absolute);
     }
   });
 
-  const pageUrlObj = new URL(html.url);
-  const pageParam = pageUrlObj.searchParams.get('page');
-  const pageNumber = pageParam ? parseInt(pageParam) : 1;
+  // Current page number: from URL or from .pagination .active
+  const pageUrlObj = (() => {
+    try {
+      return new URL(html.url);
+    } catch {
+      return null;
+    }
+  })();
+  const pageParam = pageUrlObj?.searchParams.get('page');
+  let pageNumber = pageParam ? parseInt(pageParam, 10) : 1;
+  if (!pageNumber || Number.isNaN(pageNumber)) pageNumber = 1;
 
-  const hasNextBtn = $('a:contains("→")').length > 0 || $('a[href*="page="]').filter((_, el) => {
-    const href = $(el).attr('href') || '';
-    const nextPageNum = new URL(href, html.url).searchParams.get('page');
-    return !!(nextPageNum && parseInt(nextPageNum) > pageNumber);
-  }).length > 0;
+  const activeLink = $('.pagination li.page-item.active a[href]').first();
+  if (activeLink.length) {
+    const n = extractPageParam(activeLink.attr('href') || '');
+    if (n) pageNumber = n;
+  }
+
+  // Total pages: max page= in any pagination anchor.
+  let totalPages = 1;
+  $('.pagination li.page-item a[href]').each((_, el) => {
+    const n = extractPageParam($(el).attr('href') || '');
+    if (n && n > totalPages) totalPages = n;
+  });
+  if (totalPages < pageNumber) totalPages = pageNumber;
+
+  // hasNext: a "next" link that points to a page greater than the current one.
+  let hasNext = false;
+  const nextAnchor = $('.pagination li.page-item.next a[href]').first();
+  if (nextAnchor.length) {
+    const n = extractPageParam(nextAnchor.attr('href') || '');
+    if (n && n > pageNumber) hasNext = true;
+  }
+  if (!hasNext && pageNumber < totalPages) {
+    hasNext = true;
+  }
 
   return {
     pageUrl: html.url,
     pageNumber,
     postUrls,
-    hasNext: hasNextBtn,
+    hasNext,
   };
 }
 
+function extractPageParam(href: string): number | null {
+  if (!href) return null;
+  try {
+    const u = new URL(href, 'https://www.kvkk.gov.tr');
+    const p = u.searchParams.get('page');
+    if (!p) return null;
+    const n = parseInt(p, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    const match = href.match(/[?&]page=(\d+)/);
+    return match ? parseInt(match[1]!, 10) : null;
+  }
+}
+
+/**
+ * Serialize the article block to plain text, preserving paragraph / list breaks.
+ */
+function serializeArticle($: ReturnType<typeof load>, articleEl: any): string {
+  const lines: string[] = [];
+
+  articleEl.children().each((_: number, child: any) => {
+    const $child = $(child);
+    const tag = (child as any).tagName?.toLowerCase?.() ?? '';
+    if (tag === 'h2') return; // title handled separately
+    if (tag === 'ul' || tag === 'ol') {
+      $child.children('li').each((__: number, li: any) => {
+        const text = $(li).text().replace(/\s+/g, ' ').trim();
+        if (text) lines.push(`- ${text}`);
+      });
+      return;
+    }
+    const text = $child.text().replace(/\s+/g, ' ').trim();
+    if (text) lines.push(text);
+  });
+
+  if (lines.length === 0) {
+    // Fallback: raw text of article.
+    const fallback = articleEl.text().replace(/\s+/g, ' ').trim();
+    return fallback;
+  }
+
+  return lines.join('\n\n');
+}
+
+/**
+ * Parse a detail page /Icerik/{id}/{slug}.
+ * Selectors:
+ *   title:   .news__detail-article-title  (fallback .breadcrumb-item.active)
+ *   date:    .news__detail-head-meta div > span:not(.title)
+ *   article: .news__detail-article (minus <h2>)
+ */
 export function parsePostPage(html: HtmlResponse): ParsedPost {
   const $ = load(html.body);
 
-  // Try specific KVKK blog container first, then fall back to generic selectors
-  let postContainer = $('.blog-post-inner');
-  let titleElement = postContainer.find('.blog-post-title');
+  const articleEl = $('.news__detail-article').first();
+  const titleEl = articleEl.find('.news__detail-article-title').first();
 
-  // Fall back to generic selectors if specific container not found
-  if (postContainer.length === 0 || titleElement.length === 0) {
-    const genericTitle = $('h1').first();
-    if (genericTitle.length === 0) {
-      throw new Error('PARSE_FAILED: post container missing');
-    }
-    let title = genericTitle.text().trim();
-    title = title.replace(/^Kamuoyu Duyurusu \(Veri İhlali Bildirimi\) [–-] /, '').trim();
-    const content = $('body').text().trim();
-    const dates = extractDates(content, null);
-    return {
-      sourceUrl: html.url,
-      title,
-      content,
-      publicationDate: dates.publicationDate,
-      incidentDate: dates.incidentDate,
-    };
+  let title = titleEl.text().replace(/\s+/g, ' ').trim();
+  if (!title) {
+    title = $('.breadcrumb-item.active').first().text().replace(/\s+/g, ' ').trim();
+  }
+  if (!title) {
+    title = $('h1').first().text().replace(/\s+/g, ' ').trim();
   }
 
-  let title = titleElement.text().trim();
-  title = title.replace(/^Kamuoyu Duyurusu \(Veri İhlali Bildirimi\) [–-] /, '').trim();
+  if (!title) {
+    throw new Error('PARSE_FAILED: title missing');
+  }
 
-  const content = postContainer.text().trim();
+  // Publication date — first span without class="title" inside news__detail-head-meta
+  let publicationDateText: string | null = null;
+  $('.news__detail-head-meta div > span').each((_, el) => {
+    if (publicationDateText) return;
+    const $el = $(el);
+    if ($el.hasClass('title')) return;
+    const text = $el.text().trim();
+    if (text) publicationDateText = text;
+  });
+  const publicationDate = parseTurkishLongDate(publicationDateText);
 
-  const dates = extractDates(content, null);
+  // Body content (article minus the h2 title).
+  let content = '';
+  if (articleEl.length) {
+    content = serializeArticle($, articleEl);
+  } else {
+    content = $('main').text().replace(/\s+/g, ' ').trim();
+  }
+
+  // Incident / detection dates from body text.
+  const incidentDate = extractIncidentDate(content);
 
   return {
     sourceUrl: html.url,
     title,
     content,
-    publicationDate: dates.publicationDate,
-    incidentDate: dates.incidentDate,
+    publicationDate,
+    incidentDate,
   };
 }
 
+/**
+ * Find the "İhlalin DD.MM.YYYY tarihinde başladığı" date, falling back to the
+ * "DD.MM.YYYY tarihinde tespit edildiği" detection date, then any DD.MM.YYYY
+ * found in the body.
+ */
+export function extractIncidentDate(body: string): Date | null {
+  if (!body) return null;
+
+  const startedMatch = body.match(/İhlalin\s+(\d{2}\.\d{2}\.\d{4})\s+tarihinde\s+başladığı/iu);
+  if (startedMatch) {
+    const d = parseDottedDate(startedMatch[1]!);
+    if (d) return d;
+  }
+
+  const detectedMatch = body.match(/(\d{2}\.\d{2}\.\d{4})\s+tarihinde\s+tespit\s+edildiği/iu);
+  if (detectedMatch) {
+    const d = parseDottedDate(detectedMatch[1]!);
+    if (d) return d;
+  }
+
+  const anyDot = body.match(/\b(\d{2}\.\d{2}\.\d{4})\b/);
+  if (anyDot) {
+    const d = parseDottedDate(anyDot[1]!);
+    if (d) return d;
+  }
+
+  return null;
+}
+
+/**
+ * Back-compat helper preserved for the spec. Returns publicationDate (from
+ * optional listing-provided string) and incidentDate (best-effort from body).
+ */
 export function extractDates(
   body: string,
   listingDate: string | null,
 ): { publicationDate: Date | null; incidentDate: Date | null } {
-  let publicationDate: Date | null = null;
-
-  if (listingDate) {
-    publicationDate = parseDate(listingDate);
-  }
-
-  let incidentDate: Date | null = null;
-
-  const ddmmyyyyRegex = /(\d{1,2})[./](\d{1,2})[./](\d{4})/;
-  const ddmmyyyyMatch = body.match(ddmmyyyyRegex);
-  if (ddmmyyyyMatch) {
-    const [, day, month, year] = ddmmyyyyMatch;
-    if (!day || !month || !year) return { publicationDate, incidentDate };
-    incidentDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    if (!publicationDate) {
-      publicationDate = incidentDate;
-    }
-    return { publicationDate, incidentDate };
-  }
-
-  const turkishDateRegex = /(\d{1,2})\s+(ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)\s+(\d{4})/i;
-  const turkishMatch = body.match(turkishDateRegex);
-  if (turkishMatch) {
-    const [, day, monthName, year] = turkishMatch;
-    if (!day || !monthName || !year) return { publicationDate, incidentDate };
-    const month = TURKISH_MONTHS[monthName.toLowerCase()];
-    if (month) {
-      incidentDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-      if (!publicationDate) {
-        publicationDate = incidentDate;
-      }
-    }
-  }
-
+  const publicationDate =
+    parseTurkishLongDate(listingDate) ?? (listingDate ? parseDottedDate(listingDate.trim()) : null);
+  const incidentDate = extractIncidentDate(body);
   return { publicationDate, incidentDate };
 }
