@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
+import { Route as RootRoute } from '../root';
 import { FilterBar } from '../components/FilterBar';
 import { PostCard } from '../components/PostCard';
 import { Button } from '../components/form/Button';
@@ -44,7 +45,9 @@ function PostsPage() {
   );
 }
 
-export const Route = createFileRoute('/posts' as never)({
+export const Route = createRoute({
+  getParentRoute: () => RootRoute,
+  path: '/posts',
   validateSearch: (search: Record<string, unknown>): Partial<PostListQuery> => search,
   component: PostsPage,
 });

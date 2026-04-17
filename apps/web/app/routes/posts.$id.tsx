@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { Link, createRoute } from '@tanstack/react-router';
+import { Route as RootRoute } from '../root';
 import { usePost, useMarkAsRead } from '../lib/queries';
 
 // CONTRACT:
@@ -98,6 +99,8 @@ function PostDetailPage() {
   );
 }
 
-export const Route = createFileRoute('/posts/$id' as never)({
+export const Route = createRoute({
+  getParentRoute: () => RootRoute,
+  path: '/posts/$id',
   component: PostDetailPage,
 });
