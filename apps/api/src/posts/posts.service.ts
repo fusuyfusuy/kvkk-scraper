@@ -48,16 +48,16 @@ export class PostsService {
       where.read = !query.unreadOnly;
     }
 
-    // Calculate pagination
-    const skip = (query.page - 1) * query.pageSize;
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const skip = (page - 1) * pageSize;
 
-    // Run count and findMany in parallel
     const [total, items, unreadCount] = await Promise.all([
       this.prisma.post.count({ where }),
       this.prisma.post.findMany({
         where,
         orderBy: [{ publicationDate: 'desc' }, { scrapedAt: 'desc' }],
-        take: query.pageSize,
+        take: pageSize,
         skip,
       }),
       this.prisma.post.count({ where: { read: false } }),
@@ -66,8 +66,8 @@ export class PostsService {
     return {
       items,
       total,
-      page: query.page,
-      pageSize: query.pageSize,
+      page,
+      pageSize,
       unreadCount,
     };
   }
