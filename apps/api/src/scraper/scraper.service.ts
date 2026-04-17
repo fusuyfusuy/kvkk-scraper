@@ -50,7 +50,7 @@ export class ScraperService {
       let context = await this.initRun(request);
       const baseUrl = this.configService.get<string>('baseUrl') || 'https://www.kvkk.gov.tr';
 
-      let pageUrl: PageUrl = `${baseUrl}/veri-ihlali-bildirimi/?&page=${context.currentPage}` as PageUrl;
+      let pageUrl: PageUrl = `${baseUrl}/veri-ihlali-bildirimi/?page=${context.currentPage}` as PageUrl;
 
       while (true) {
         let html: HtmlResponse;
@@ -296,7 +296,7 @@ export class ScraperService {
     const nextPage = context.currentPage + 1;
     return {
       action: 'CONTINUE',
-      nextPageUrl: `${baseUrl}/veri-ihlali-bildirimi/?&page=${nextPage}` as PageUrl,
+      nextPageUrl: `${baseUrl}/veri-ihlali-bildirimi/?page=${nextPage}` as PageUrl,
       reason: 'Continue to next page',
     };
   }
@@ -386,7 +386,7 @@ export class ScraperService {
 
   async retryListFetch(context: ScrapeRunContext): Promise<PageUrl> {
     const baseUrl = this.configService.get<string>('baseUrl') || 'https://www.kvkk.gov.tr';
-    return `${baseUrl}/veri-ihlali-bildirimi/?&page=${context.currentPage}` as PageUrl;
+    return `${baseUrl}/veri-ihlali-bildirimi/?page=${context.currentPage}` as PageUrl;
   }
 
   async retryPostFetch(context: ScrapeRunContext): Promise<PostUrl> {
