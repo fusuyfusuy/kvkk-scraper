@@ -1,51 +1,34 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Outlet, createRootRoute } from '@tanstack/react-router';
 import { UnreadBadge } from './components/UnreadBadge';
 import { useSseEvents } from './lib/sse';
-import { useUnreadCount } from './lib/queries';
-
-// CONTRACT:
-// Root route — wraps the app with QueryClientProvider and renders the header with UnreadBadge.
-// Logic:
-//   1. Instantiate QueryClient with staleTime=30s, gcTime=5min
-//   2. Render header with app title and <UnreadBadge />
-//   3. Render <Outlet /> for child routes
-//   4. Call useSseEvents() hook to subscribe to SSE stream globally
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      gcTime: 300_000,
-    },
-  },
-});
+import { useUnreadCount, useTriggerRefresh } from './lib/queries';
 
 function RootComponent() {
-  // CONTRACT:
-  // Renders QueryClientProvider, header with UnreadBadge, and Outlet.
-  // Logic:
-  //   1. Wrap with <QueryClientProvider client={queryClient}>
-  //   2. Header: nav with h1 "KVKK Takip" and <UnreadBadge />
-  //   3. <Outlet /> for page content
-  //   4. useSseEvents() subscribes globally
   useSseEvents();
   const { data: unreadData } = useUnreadCount();
+  const { mutate: refresh, isPending } = useTriggerRefresh();
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow">
-          <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">KVKK Takip</h1>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow">
+        <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">KVKK Takip</h1>
+          <div className="flex items-center gap-4">
             <UnreadBadge count={unreadData?.unreadCount ?? 0} />
-          </nav>
-        </header>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Outlet />
-        </main>
-      </div>
-    </QueryClientProvider>
+            <button
+              onClick={() => refresh()}
+              disabled={isPending}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 text-sm transition-colors"
+            >
+              {isPending ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+        </nav>
+      </header>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Outlet />
+      </main>
+    </div>
   );
 }
 

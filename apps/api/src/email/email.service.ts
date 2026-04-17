@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SseService } from '../sse/sse.service';
 import type { Post, ScrapeRunSummary } from '@kvkk/shared';
@@ -67,7 +68,7 @@ export class EmailService implements OnModuleInit {
         text,
       });
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => {
         await tx.emailDelivery.create({
           data: {
             postId: post.id,
