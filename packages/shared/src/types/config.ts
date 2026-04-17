@@ -6,8 +6,8 @@ export type RefreshMode = z.infer<typeof RefreshModeSchema>;
 export const AppConfigSchema = z.object({
   smtpHost: z.string().min(1),
   smtpPort: z.coerce.number().int().min(1).max(65535),
-  smtpUser: z.string().min(1),
-  smtpPass: z.string().min(1),
+  smtpUser: z.string().optional().default(''),
+  smtpPass: z.string().optional().default(''),
   smtpFrom: z.string().email(),
   notificationRecipients: z.array(z.string().email()).min(1),
   cronExpression: z.string().min(1).default('0 * * * *'),

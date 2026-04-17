@@ -3,14 +3,18 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    env_file: .env
     environment:
       DATABASE_URL: file:/app/data/kvkk.db
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
-      SMTP_USER: ""
-      SMTP_PASS: ""
-      SMTP_FROM: kvkk@localhost
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-kvkk@example.com}
+      NOTIFICATION_RECIPIENTS: ${NOTIFICATION_RECIPIENTS:-admin@example.com}
+      CRON_EXPRESSION: ${CRON_EXPRESSION:-0 * * * *}
+      REFRESH_MODE: ${REFRESH_MODE:-DUPLICATES}
+      REFRESH_MAX_PAGES: ${REFRESH_MAX_PAGES:-50}
+      REFRESH_MAX_CONSECUTIVE_DUPLICATES: ${REFRESH_MAX_CONSECUTIVE_DUPLICATES:-5}
     volumes:
       - sqlite-data:/app/data
     depends_on:
