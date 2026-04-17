@@ -1,30 +1,30 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
-import { AppConfigSchema } from '@kvkk/shared';
 
 @Global()
 @Module({
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
-      validate: (config: Record<string, unknown>) => {
-        const result = AppConfigSchema.safeParse({
-          smtpHost: config['SMTP_HOST'],
-          smtpPort: config['SMTP_PORT'],
-          smtpUser: config['SMTP_USER'],
-          smtpPass: config['SMTP_PASS'],
-          smtpFrom: config['SMTP_FROM'],
-          notificationRecipients: String(config['NOTIFICATION_RECIPIENTS'] ?? '').split(',').map((s) => s.trim()).filter(Boolean),
-          cronExpression: config['CRON_EXPRESSION'],
-          refreshMode: config['REFRESH_MODE'],
-          refreshMaxPages: config['REFRESH_MAX_PAGES'],
-          refreshMaxConsecutiveDuplicates: config['REFRESH_MAX_CONSECUTIVE_DUPLICATES'],
-        });
-        if (!result.success) {
-          throw new Error(`Config validation failed: ${result.error.message}`);
-        }
-        return result.data;
-      },
+      load: [
+        () => ({
+          smtpHost: process.env['SMTP_HOST'],
+          smtpPort: process.env['SMTP_PORT'] ? Number(process.env['SMTP_PORT']) : undefined,
+          smtpUser: process.env['SMTP_USER'],
+          smtpPass: process.env['SMTP_PASS'],
+          smtpFrom: process.env['SMTP_FROM'],
+          notificationRecipients: String(process.env['NOTIFICATION_RECIPIENTS'] ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+          cronExpression: process.env['CRON_EXPRESSION'] ?? '0 * * * *',
+          refreshMode: process.env['REFRESH_MODE'] ?? 'DUPLICATES',
+          refreshMaxPages: process.env['REFRESH_MAX_PAGES'] ? Number(process.env['REFRESH_MAX_PAGES']) : 50,
+          refreshMaxConsecutiveDuplicates: process.env['REFRESH_MAX_CONSECUTIVE_DUPLICATES']
+            ? Number(process.env['REFRESH_MAX_CONSECUTIVE_DUPLICATES'])
+            : 5,
+        }),
+      ],
     }),
   ],
   exports: [NestConfigModule],

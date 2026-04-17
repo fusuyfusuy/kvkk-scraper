@@ -5,14 +5,36 @@ import type {
   RefreshResponse,
   MarkAsReadResponse,
   UnreadCountResponse,
+  SettingsResponse,
+  AppConfigPatch,
+  StatsResponse,
+  ScrapeRun,
+  EmailDeliveryListResponse,
 } from '@kvkk/shared';
 
 const API_BASE = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000/api';
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, init);
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let message = `API ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.message) message = typeof body.message === 'string' ? body.message : JSON.stringify(body.message);
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
   return res.json() as Promise<T>;
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
 }
 
 export function listPosts(query: Partial<PostListQuery>): Promise<PostListResponse> {
@@ -42,4 +64,28 @@ export function triggerRefresh(): Promise<RefreshResponse> {
 
 export function getUnreadCount(): Promise<UnreadCountResponse> {
   return fetchJson<UnreadCountResponse>('/posts/unread/count');
+}
+
+export function getSettings(): Promise<SettingsResponse> {
+  return fetchJson<SettingsResponse>('/settings');
+}
+
+export function updateSettings(patch: AppConfigPatch): Promise<SettingsResponse> {
+  return fetchJson<SettingsResponse>('/settings', jsonInit('PUT', patch));
+}
+
+export function sendTestEmail(recipient: string): Promise<{ ok: true }> {
+  return fetchJson<{ ok: true }>('/settings/test-mail', jsonInit('POST', { recipient }));
+}
+
+export function getStats(): Promise<StatsResponse> {
+  return fetchJson<StatsResponse>('/posts/stats');
+}
+
+export function listScrapeRuns(): Promise<ScrapeRun[]> {
+  return fetchJson<ScrapeRun[]>('/scraper/runs');
+}
+
+export function listEmailDeliveries(limit = 50): Promise<EmailDeliveryListResponse> {
+  return fetchJson<EmailDeliveryListResponse>(`/email-deliveries?limit=${limit}`);
 }

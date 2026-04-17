@@ -5,6 +5,7 @@ import type {
   PostListQuery,
   PostListResponse,
   MarkAsReadResponse,
+  StatsResponse,
 } from '@kvkk/shared';
 
 @Injectable()
@@ -100,5 +101,40 @@ export class PostsService {
 
   async getUnreadCount(): Promise<number> {
     return this.prisma.post.count({ where: { read: false } });
+  }
+
+  async getStats(): Promise<StatsResponse> {
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalPosts,
+      postsThisWeek,
+      unreadCount,
+      lastRun,
+      totalRuns30d,
+      successRuns30d,
+    ] = await Promise.all([
+      this.prisma.post.count(),
+      this.prisma.post.count({ where: { scrapedAt: { gte: weekAgo } } }),
+      this.prisma.post.count({ where: { read: false } }),
+      this.prisma.scrapeRun.findFirst({ orderBy: { startedAt: 'desc' } }),
+      this.prisma.scrapeRun.count({ where: { startedAt: { gte: thirtyDaysAgo } } }),
+      this.prisma.scrapeRun.count({
+        where: { startedAt: { gte: thirtyDaysAgo }, status: 'SUCCESS' },
+      }),
+    ]);
+
+    const successRate30d = totalRuns30d === 0 ? 0 : successRuns30d / totalRuns30d;
+
+    return {
+      totalPosts,
+      postsThisWeek,
+      unreadCount,
+      lastRunAt: lastRun?.startedAt ?? null,
+      lastRunStatus: lastRun?.status ?? null,
+      successRate30d,
+    };
   }
 }

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { SseService } from '../sse/sse.service';
+import { RuntimeConfigService } from '../settings/runtime-config.service';
 import { fetchUrl } from './http.client';
 import {
   parseListingPage as parseListingPageFn,
@@ -35,6 +36,7 @@ export class ScraperService {
     private readonly emailService: EmailService,
     private readonly sseService: SseService,
     private readonly configService: ConfigService,
+    private readonly runtime: RuntimeConfigService,
   ) {}
 
   async runScrape(request: ScrapeRunRequest): Promise<ScrapeRunSummary> {
@@ -163,10 +165,10 @@ export class ScraperService {
   async initRun(request: ScrapeRunRequest): Promise<ScrapeRunContext> {
     const now = new Date();
 
-    const refreshMode = this.configService.get<string>('refreshMode') || 'DUPLICATES';
-    const maxPages = this.configService.get<number>('refreshMaxPages') || 50;
-    const maxConsecutiveDuplicates =
-      this.configService.get<number>('refreshMaxConsecutiveDuplicates') || 5;
+    const current = this.runtime.getCurrent();
+    const refreshMode = current.refreshMode;
+    const maxPages = current.refreshMaxPages;
+    const maxConsecutiveDuplicates = current.refreshMaxConsecutiveDuplicates;
 
     const run = await this.prisma.scrapeRun.create({
       data: {
@@ -269,7 +271,7 @@ export class ScraperService {
   async advancePage(context: ScrapeRunContext): Promise<PageDecision> {
     context.pagesWalked += 1;
 
-    const refreshMode = this.configService.get<string>('refreshMode') || 'DUPLICATES';
+    const refreshMode = this.runtime.getCurrent().refreshMode;
 
     if (
       refreshMode === 'DUPLICATES' &&

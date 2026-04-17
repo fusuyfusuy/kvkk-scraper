@@ -42,7 +42,7 @@ function PostDetailPage() {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Post Not Found</h2>
-        <Link to="/" className="text-blue-600 hover:text-blue-700 underline">
+        <Link to="/posts" className="text-blue-600 hover:text-blue-700 underline">
           Back to Posts
         </Link>
       </div>
@@ -58,8 +58,8 @@ function PostDetailPage() {
     : null;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <Link to="/" className="text-blue-600 hover:text-blue-700 underline mb-6 inline-block">
+    <div className="max-w-3xl mx-auto p-8">
+      <Link to="/posts" className="text-blue-600 hover:text-blue-700 underline mb-6 inline-block">
         ← Back to Posts
       </Link>
 

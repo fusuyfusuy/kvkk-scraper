@@ -6,6 +6,7 @@ import type {
   PostDetailResponse,
   MarkAsReadResponse,
   UnreadCountResponse,
+  StatsResponse,
 } from '@kvkk/shared';
 
 @Controller('posts')
@@ -21,6 +22,11 @@ export class PostsController {
   async getUnreadCount(): Promise<UnreadCountResponse> {
     const unreadCount = await this.postsService.getUnreadCount();
     return { unreadCount };
+  }
+
+  @Get('stats')
+  async stats(): Promise<StatsResponse> {
+    return this.postsService.getStats();
   }
 
   @Get(':id')

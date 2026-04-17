@@ -5,11 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 
 import { Route as RootRoute } from './root';
-import { Route as IndexRoute } from './routes/index';
+import { Route as DashboardRoute } from './routes/dashboard';
+import { Route as PostsRoute } from './routes/posts';
 import { Route as PostDetailRoute } from './routes/posts.$id';
+import { Route as ScrapeSettingsRoute } from './routes/settings.scrape';
+import { Route as MailSettingsRoute } from './routes/settings.mail';
 
 // @ts-expect-error TanStack Router file-based routes require codegen for full type safety
-const routeTree = RootRoute.addChildren([IndexRoute, PostDetailRoute]);
+const routeTree = RootRoute.addChildren([DashboardRoute, PostsRoute, PostDetailRoute, ScrapeSettingsRoute, MailSettingsRoute]);
 const router = createRouter({ routeTree });
 
 const queryClient = new QueryClient({

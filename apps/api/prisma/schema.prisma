@@ -38,6 +38,12 @@ model ScrapeRun {
   error                 String?
 }
 
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model EmailDelivery {
   id        Int       @id @default(autoincrement())
   postId    Int

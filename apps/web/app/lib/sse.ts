@@ -12,12 +12,23 @@ export function useSseEvents() {
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        const name = data.event as string | undefined;
         if (
-          data.event === 'post:created' ||
-          data.event === 'post:updated' ||
-          data.event === 'scrape:completed'
+          name === 'post:created' ||
+          name === 'post:updated' ||
+          name === 'scrape:completed'
         ) {
           queryClient.invalidateQueries({ queryKey: ['posts'] });
+        }
+        if (
+          name === 'scrape:completed' ||
+          name === 'scrape:failed' ||
+          name === 'email:sent' ||
+          name === 'email:failed'
+        ) {
+          queryClient.invalidateQueries({ queryKey: ['stats'] });
+          queryClient.invalidateQueries({ queryKey: ['scrape-runs'] });
+          queryClient.invalidateQueries({ queryKey: ['email-deliveries'] });
         }
       } catch {
         // ignore parse errors

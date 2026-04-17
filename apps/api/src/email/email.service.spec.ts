@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EmailService } from './email.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { SseService } from '../sse/sse.service';
-import type { ConfigService } from '@nestjs/config';
+import type { RuntimeConfigService } from '../settings/runtime-config.service';
 import type { Post, ScrapeRunSummary } from '@kvkk/shared';
 
 function buildPost(overrides: Partial<Post> = {}): Post {
@@ -55,23 +55,25 @@ describe('EmailService', () => {
     };
     sse = { emit: vi.fn() };
     config = {
-      get: vi.fn((key: string) => {
-        const map: Record<string, any> = {
-          smtpHost: 'smtp.example.com',
-          smtpPort: 587,
-          smtpUser: 'u',
-          smtpPass: 'p',
-          smtpFrom: 'from@example.com',
-          notificationRecipients: ['a@example.com'],
-        };
-        return map[key];
-      }),
+      getCurrent: vi.fn(() => ({
+        smtpHost: 'smtp.example.com',
+        smtpPort: 587,
+        smtpUser: 'u',
+        smtpPass: 'p',
+        smtpFrom: 'from@example.com',
+        notificationRecipients: ['a@example.com'],
+        cronExpression: '0 * * * *',
+        refreshMode: 'DUPLICATES',
+        refreshMaxPages: 50,
+        refreshMaxConsecutiveDuplicates: 5,
+      })),
     };
     svc = new EmailService(
       prisma as PrismaService,
-      config as ConfigService,
+      config as RuntimeConfigService,
       sse as SseService,
     );
+    (svc as any).initTransporter();
   });
 
   describe('sendBreachNotification', () => {

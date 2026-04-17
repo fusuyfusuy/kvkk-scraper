@@ -64,7 +64,21 @@ describe('ScraperService', () => {
     email = { sweepAndSend: vi.fn(async (s: ScrapeRunSummary) => s) };
     sse = { emit: vi.fn() };
     const config = { get: vi.fn((key: string) => undefined) } as any;
-    svc = new ScraperService(prisma as PrismaService, email as EmailService, sse as SseService, config);
+    const runtime = {
+      getCurrent: () => ({
+        smtpHost: 'localhost',
+        smtpPort: 1025,
+        smtpUser: '',
+        smtpPass: '',
+        smtpFrom: 'kvkk@example.com',
+        notificationRecipients: ['admin@example.com'],
+        cronExpression: '0 * * * *',
+        refreshMode: 'DUPLICATES' as const,
+        refreshMaxPages: 50,
+        refreshMaxConsecutiveDuplicates: 5,
+      }),
+    } as any;
+    svc = new ScraperService(prisma as PrismaService, email as EmailService, sse as SseService, config, runtime);
   });
 
   describe('initRun', () => {

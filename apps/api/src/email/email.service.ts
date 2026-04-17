@@ -1,8 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SseService } from '../sse/sse.service';
+import { RuntimeConfigService, CONFIG_CHANGED_EVENT } from '../settings/runtime-config.service';
 import type { Post, ScrapeRunSummary } from '@kvkk/shared';
 import * as nodemailer from 'nodemailer';
 import { renderBreachEmail } from './email.templates';
@@ -13,26 +14,19 @@ export class EmailService implements OnModuleInit {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
+    private readonly runtime: RuntimeConfigService,
     private readonly sseService: SseService,
-  ) {
-    this.initTransporter();
-  }
+  ) {}
 
   private initTransporter(): void {
-    const smtpHost = this.configService.get<string>('smtpHost');
-    const smtpPort = this.configService.get<number>('smtpPort');
-    const smtpUser = this.configService.get<string>('smtpUser');
-    const smtpPass = this.configService.get<string>('smtpPass');
-
+    const c = this.runtime.getCurrent();
     this.transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
+      host: c.smtpHost,
+      port: c.smtpPort,
+      secure: c.smtpPort === 465,
+      auth: c.smtpUser
+        ? { user: c.smtpUser, pass: c.smtpPass }
+        : undefined,
     });
   }
 
@@ -40,14 +34,30 @@ export class EmailService implements OnModuleInit {
     this.initTransporter();
   }
 
+  @OnEvent(CONFIG_CHANGED_EVENT)
+  handleConfigChanged(): void {
+    this.initTransporter();
+  }
+
+  async sendTestEmail(recipient: string): Promise<void> {
+    if (!this.transporter) this.initTransporter();
+    const c = this.runtime.getCurrent();
+    await this.transporter!.sendMail({
+      from: c.smtpFrom,
+      to: recipient,
+      subject: 'KVKK Takip — test email',
+      text: 'This is a test email from the KVKK Takip admin panel.',
+      html: '<p>This is a test email from the <strong>KVKK Takip</strong> admin panel.</p>',
+    });
+  }
+
   async sendBreachNotification(post: Post, recipient: string): Promise<void> {
-    // Validate recipient email address
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(recipient)) {
       throw new Error(`Invalid recipient email address: ${recipient}`);
     }
 
-    const smtpFrom = this.configService.get<string>('smtpFrom');
+    const smtpFrom = this.runtime.getCurrent().smtpFrom;
 
     const emailData = {
       title: post.title,
@@ -116,7 +126,7 @@ export class EmailService implements OnModuleInit {
       orderBy: { scrapedAt: 'asc' },
     });
 
-    const recipients = this.configService.get<string[]>('notificationRecipients') || [];
+    const recipients = this.runtime.getCurrent().notificationRecipients;
 
     for (const post of posts) {
       for (const recipient of recipients) {
