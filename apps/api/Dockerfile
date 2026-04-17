@@ -34,4 +34,4 @@ WORKDIR /app/apps/api
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/kvkk.db
 EXPOSE 3000
-CMD ["sh", "-c", "bunx prisma migrate deploy && bun run dist/main.js"]
+CMD ["sh", "-c", "bunx prisma db push --accept-data-loss --skip-generate && bun run dist/apps/api/src/main.js"]
