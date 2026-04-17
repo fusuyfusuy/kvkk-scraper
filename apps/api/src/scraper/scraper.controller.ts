@@ -1,4 +1,4 @@
-import { Controller, Post, Get } from '@nestjs/common';
+import { Controller, Post, Get, Logger } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ScraperService } from './scraper.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,8 @@ import type { RefreshResponse, ScrapeRun } from '@kvkk/shared';
 @ApiTags('scraper')
 @Controller('scraper')
 export class ScraperController {
+  private readonly logger = new Logger('ScraperController');
+
   constructor(
     private readonly scraperService: ScraperService,
     private readonly prisma: PrismaService,
@@ -27,8 +29,8 @@ export class ScraperController {
     try {
       const request = { mode: 'MANUAL' as const };
       // Fire and forget the scrape
-      this.scraperService.runScrape(request).catch(err => {
-        // Errors are handled internally by service
+      this.scraperService.runScrape(request).catch((err: Error) => {
+        this.logger.error(`Manual scrape failed: ${err.message}`, err.stack);
       });
       return { status: 'accepted', runId: null };
     } catch (error) {

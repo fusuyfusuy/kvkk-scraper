@@ -19,14 +19,14 @@ export class PostsService {
     // Search in title or content
     if (query.search) {
       where.OR = [
-        { title: { contains: query.search, mode: 'insensitive' } },
-        { content: { contains: query.search, mode: 'insensitive' } },
+        { title: { contains: query.search } },
+        { content: { contains: query.search } },
       ];
     }
 
     // Filter by company (title contains)
     if (query.company) {
-      where.title = { contains: query.company, mode: 'insensitive' };
+      where.title = { contains: query.company };
     }
 
     // Filter by date range
